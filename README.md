@@ -30,6 +30,22 @@ When background mode is ON (`/ts-bg`), the plugin serves:
 
 ## Installation
 
+### Option A: Install from GitHub (recommended)
+
+Add this to your OpenCode config (`~/.config/opencode/opencode.json`):
+
+```json
+{
+  "plugin": [
+    "github:Daltonganger/opencode-tokenspeed-monitor#v0.1.0"
+  ]
+}
+```
+
+Then restart OpenCode.
+
+### Option B: Local development install
+
 1) Build the plugin:
 
 ```bash
