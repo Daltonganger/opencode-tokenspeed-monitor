@@ -30,7 +30,21 @@ When background mode is ON (`/ts-bg`), the plugin serves:
 
 ## Installation
 
-### Option A: Install from GitHub (recommended)
+### Option A: Install from npm (short plugin line)
+
+After publishing to npm, add this to your OpenCode config (`~/.config/opencode/opencode.json`):
+
+```json
+{
+  "plugin": [
+    "opencode-tokenspeed-monitor@latest"
+  ]
+}
+```
+
+Then restart OpenCode.
+
+### Option B: Install from GitHub
 
 Add this to your OpenCode config (`~/.config/opencode/opencode.json`):
 
@@ -103,6 +117,23 @@ curl -N --max-time 8 "http://localhost:${PORT}/api/live"
 ```bash
 bun test
 bun run build
+```
+
+## Publish to npm
+
+```bash
+npm login
+npm publish --access public
+```
+
+After publish, users can use:
+
+```json
+{
+  "plugin": [
+    "opencode-tokenspeed-monitor@latest"
+  ]
+}
 ```
 
 ## Notes

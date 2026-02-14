@@ -1,14 +1,42 @@
 {
   "name": "opencode-tokenspeed-monitor",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "description": "Monitor token speed per request with SQLite persistence and HTTP API",
+  "license": "MIT",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "opencode",
+    "plugin",
+    "tokens",
+    "monitoring",
+    "sqlite"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Daltonganger/opencode-tokenspeed-monitor.git"
+  },
+  "homepage": "https://github.com/Daltonganger/opencode-tokenspeed-monitor#readme",
+  "bugs": {
+    "url": "https://github.com/Daltonganger/opencode-tokenspeed-monitor/issues"
+  },
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "test": "bun test"
+    "test": "bun test src/**/*.test.ts",
+    "pack:check": "npm pack --dry-run"
   },
   "peerDependencies": {
     "@opencode-ai/plugin": ">=0.1.0"

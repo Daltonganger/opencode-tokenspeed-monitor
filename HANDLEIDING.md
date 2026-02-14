@@ -6,6 +6,22 @@ Deze plugin meet tokensnelheid per request in OpenCode en slaat metrics lokaal o
 
 ## 2. Installeren
 
+### Optie A (kort, via npm)
+
+Na publiceren op npm kun je dit gebruiken in `~/.config/opencode/opencode.json`:
+
+```json
+{
+  "plugin": [
+    "opencode-tokenspeed-monitor@latest"
+  ]
+}
+```
+
+Herstart OpenCode.
+
+### Optie B (via GitHub tag)
+
 In de pluginmap:
 
 ```bash
@@ -59,3 +75,10 @@ curl "http://localhost:${PORT}/api/stats"
 - Geen output op `/ts-status`: stuur eerst een request zodat er metrics zijn.
 - Poort in gebruik bij `/ts-bg`: plugin wijkt uit naar een vrije poort en logt de gekozen URL.
 - Build problemen: run `bun install` opnieuw en daarna `bun run build`.
+
+## 7. Publiceren op npm
+
+```bash
+npm login
+npm publish --access public
+```
