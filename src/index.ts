@@ -21,10 +21,11 @@ function formatMetricsLine(metrics: RequestMetrics): string {
   return `${metrics.modelID} | ${tps} | ${duration}`;
 }
 
-export const TokenSpeedMonitor: Plugin = async ({ client }) => {
+export const TokenSpeedMonitor: Plugin = async ({ client, $ }) => {
   const state: PluginState = {
     enabled: true,
     backgroundEnabled: true,
+    apiUrl: null,
     sessionStats: {
       requestCount: 0,
       totalInputTokens: 0,
@@ -43,6 +44,7 @@ export const TokenSpeedMonitor: Plugin = async ({ client }) => {
 
     const port = parsePort(process.env.TS_BG_PORT);
     apiServer = startApiServer(db, port);
+    state.apiUrl = apiServer.url;
     await client.app.log({
       body: {
         service: "tokenspeed-monitor",
@@ -113,7 +115,7 @@ export const TokenSpeedMonitor: Plugin = async ({ client }) => {
     event: async ({ event }) => {
       await collector.handle(event);
     },
-    tool: createTools(client, state, db, onBackgroundToggle),
+    tool: createTools(client, state, db, $, onBackgroundToggle),
   };
 };
 

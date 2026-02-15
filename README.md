@@ -15,7 +15,8 @@ TokenSpeed Monitor is an OpenCode plugin that measures token speed per request, 
 
 ## Commands
 
-- `/ts` - toggle monitor on/off
+- `/ts` - open TokenSpeed API page in browser (`/api/stats`)
+- `/ts-toggle` - toggle monitor on/off
 - `/ts-status` - show current status and latest metric
 - `/ts-stats` - show aggregated totals and model summary
 - `/ts-history` - show recent request history (supports limit)

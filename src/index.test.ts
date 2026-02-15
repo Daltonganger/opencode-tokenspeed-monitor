@@ -45,6 +45,7 @@ describe("plugin entry", () => {
       "ts-history",
       "ts-stats",
       "ts-status",
+      "ts-toggle",
     ]);
   });
 
@@ -59,7 +60,7 @@ describe("plugin entry", () => {
       $: {} as never,
     });
 
-    const toggle = hooks.tool?.ts;
+    const toggle = hooks.tool?.["ts-toggle"];
     expect(toggle).toBeDefined();
     const result = await toggle!.execute({}, {
       sessionID: "ses-1",

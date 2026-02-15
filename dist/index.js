@@ -17,10 +17,11 @@ function formatMetricsLine(metrics) {
     const tps = metrics.outputTps !== undefined ? `${metrics.outputTps} tok/s` : "N/A";
     return `${metrics.modelID} | ${tps} | ${duration}`;
 }
-export const TokenSpeedMonitor = async ({ client }) => {
+export const TokenSpeedMonitor = async ({ client, $ }) => {
     const state = {
         enabled: true,
         backgroundEnabled: true,
+        apiUrl: null,
         sessionStats: {
             requestCount: 0,
             totalInputTokens: 0,
@@ -37,6 +38,7 @@ export const TokenSpeedMonitor = async ({ client }) => {
             return apiServer;
         const port = parsePort(process.env.TS_BG_PORT);
         apiServer = startApiServer(db, port);
+        state.apiUrl = apiServer.url;
         await client.app.log({
             body: {
                 service: "tokenspeed-monitor",
@@ -96,7 +98,7 @@ export const TokenSpeedMonitor = async ({ client }) => {
         event: async ({ event }) => {
             await collector.handle(event);
         },
-        tool: createTools(client, state, db, onBackgroundToggle),
+        tool: createTools(client, state, db, $, onBackgroundToggle),
     };
 };
 export default TokenSpeedMonitor;

@@ -60,7 +60,8 @@ Herstart OpenCode.
 
 ## 3. Commando's
 
-- `/ts` - monitor aan/uit
+- `/ts` - TokenSpeed pagina openen in browser (`/api/stats`)
+- `/ts-toggle` - monitor aan/uit
 - `/ts-status` - actuele status + laatste meting
 - `/ts-stats` - totaaloverzicht en modelstatistieken
 - `/ts-history` - recente requests

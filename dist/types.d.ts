@@ -31,6 +31,7 @@ export interface ModelStats {
 export interface PluginState {
     enabled: boolean;
     backgroundEnabled: boolean;
+    apiUrl: string | null;
     sessionStats: {
         requestCount: number;
         totalInputTokens: number;
