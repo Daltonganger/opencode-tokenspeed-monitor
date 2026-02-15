@@ -22,6 +22,8 @@ TokenSpeed Monitor is an OpenCode plugin that measures token speed per request, 
 - `/ts-history` - show recent request history (supports limit)
 - `/ts-bg` - start/stop background API mode
 
+These slash commands are shipped in the plugin `commands/` directory, so they are available to users after plugin install.
+
 ## API Endpoints
 
 When background mode is ON (`/ts-bg`), the plugin serves:

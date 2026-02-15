@@ -67,6 +67,8 @@ Herstart OpenCode.
 - `/ts-history` - recente requests
 - `/ts-bg` - background API aan/uit
 
+Deze slash commands worden meegeleverd via de plugin-map `commands/`, zodat ze beschikbaar zijn na installatie van de plugin.
+
 ## 4. Background API
 
 Na `/ts-bg` kun je data ophalen via:
