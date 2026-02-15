@@ -12,7 +12,7 @@ export function createBackgroundTool(
   onToggle: (enabled: boolean) => Promise<BackgroundToggleResult>,
 ): ToolDefinition {
   return tool({
-    description: "Toggle background collection mode for TokenSpeed API",
+    description: "Toggle TokenSpeed background mode flag (API stays available)",
     args: {},
     async execute() {
       const next = !state.backgroundEnabled;

@@ -1,7 +1,7 @@
 import { tool } from "@opencode-ai/plugin";
 export function createBackgroundTool(state, onToggle) {
     return tool({
-        description: "Toggle background collection mode for TokenSpeed API",
+        description: "Toggle TokenSpeed background mode flag (API stays available)",
         args: {},
         async execute() {
             const next = !state.backgroundEnabled;
