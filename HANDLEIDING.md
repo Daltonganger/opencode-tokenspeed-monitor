@@ -4,6 +4,9 @@
 
 Deze plugin meet tokensnelheid per request in OpenCode en slaat metrics lokaal op in SQLite.
 
+- npm: https://www.npmjs.com/package/opencode-tokenspeed-monitor
+- GitHub: https://github.com/Daltonganger/opencode-tokenspeed-monitor
+
 ## 2. Installeren
 
 ### Optie A (kort, via npm)
@@ -21,6 +24,20 @@ Na publiceren op npm kun je dit gebruiken in `~/.config/opencode/opencode.json`:
 Herstart OpenCode.
 
 ### Optie B (via GitHub tag)
+
+Voeg dit toe in `~/.config/opencode/opencode.json`:
+
+```json
+{
+  "plugin": [
+    "github:Daltonganger/opencode-tokenspeed-monitor#v0.1.1"
+  ]
+}
+```
+
+Herstart OpenCode.
+
+### Optie C (lokale development install)
 
 In de pluginmap:
 

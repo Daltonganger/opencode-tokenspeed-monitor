@@ -2,6 +2,9 @@
 
 TokenSpeed Monitor is an OpenCode plugin that measures token speed per request, stores metrics in SQLite, and exposes data over an HTTP API.
 
+- npm: https://www.npmjs.com/package/opencode-tokenspeed-monitor
+- GitHub: https://github.com/Daltonganger/opencode-tokenspeed-monitor
+
 ## Features
 
 - Tracks token usage from OpenCode events (`message.updated`, `message.part.updated`, `session.idle`)
@@ -51,14 +54,14 @@ Add this to your OpenCode config (`~/.config/opencode/opencode.json`):
 ```json
 {
   "plugin": [
-    "github:Daltonganger/opencode-tokenspeed-monitor#v0.1.0"
+    "github:Daltonganger/opencode-tokenspeed-monitor#v0.1.1"
   ]
 }
 ```
 
 Then restart OpenCode.
 
-### Option B: Local development install
+### Option C: Local development install
 
 1) Build the plugin:
 
