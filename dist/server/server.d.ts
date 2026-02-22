@@ -14,5 +14,10 @@ export interface ApiServerHandle {
     publish(event: LiveMetricEvent): void;
     stop(): Promise<void>;
 }
-export declare function startApiServer(db: Database, requestedPort: number): ApiServerHandle;
+export interface ApiServerOptions {
+    uploadEnabled?: boolean;
+    uploadHubURL?: string | null;
+    flushUploadNow?: () => Promise<void>;
+}
+export declare function startApiServer(db: Database, requestedPort: number, options?: ApiServerOptions): ApiServerHandle;
 //# sourceMappingURL=server.d.ts.map

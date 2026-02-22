@@ -1,5 +1,5 @@
 ---
-description: Open TokenSpeed API page in browser
+description: Open TokenSpeed dashboard in browser
 ---
 
 Run the `ts` tool exactly once.

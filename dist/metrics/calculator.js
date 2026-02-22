@@ -108,4 +108,38 @@ export function aggregateModelStats(items) {
     }
     return result.sort((a, b) => (b.avgOutputTps ?? 0) - (a.avgOutputTps ?? 0));
 }
+export function aggregateProviderStats(items) {
+    const byProvider = new Map();
+    for (const item of items) {
+        const providerID = item.providerID ?? "unknown";
+        const bucket = byProvider.get(providerID);
+        if (bucket) {
+            bucket.push(item);
+        }
+        else {
+            byProvider.set(providerID, [item]);
+        }
+    }
+    const result = [];
+    for (const [providerID, records] of byProvider) {
+        const requestCount = records.length;
+        const totalInputTokens = records.reduce((sum, r) => sum + r.inputTokens, 0);
+        const totalOutputTokens = records.reduce((sum, r) => sum + r.outputTokens, 0);
+        const totalCost = records.reduce((sum, r) => sum + (r.cost ?? 0), 0);
+        const tpsValues = records.map(r => r.outputTps ?? 0).filter(v => v > 0);
+        const lastSeen = records.reduce((max, r) => Math.max(max, r.completedAt ?? r.startedAt), 0);
+        result.push({
+            providerID,
+            requestCount,
+            totalInputTokens,
+            totalOutputTokens,
+            avgOutputTps: tpsValues.length ? round(tpsValues.reduce((a, b) => a + b, 0) / tpsValues.length) : null,
+            minOutputTps: tpsValues.length ? Math.min(...tpsValues) : null,
+            maxOutputTps: tpsValues.length ? Math.max(...tpsValues) : null,
+            totalCost: round(totalCost, 6),
+            lastSeen: lastSeen || null,
+        });
+    }
+    return result.sort((a, b) => b.requestCount - a.requestCount);
+}
 //# sourceMappingURL=calculator.js.map

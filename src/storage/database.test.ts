@@ -1,7 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import type { RequestMetrics } from "../types";
-import { saveRequest, getRecentRequests, getSessionStats, getSessions } from "./database";
+import {
+  getProjects,
+  getProviderStats,
+  getRecentRequests,
+  getSessionStats,
+  getSessionStatsWithFilters,
+  getSessions,
+  saveRequest,
+} from "./database";
 import { runMigrations } from "./migrations";
 
 function sampleRequest(overrides: Partial<RequestMetrics> = {}): RequestMetrics {
@@ -9,6 +17,7 @@ function sampleRequest(overrides: Partial<RequestMetrics> = {}): RequestMetrics 
     id: "req-1",
     sessionID: "ses-1",
     messageID: "msg-1",
+    projectID: "/tmp/project-a",
     modelID: "model-a",
     providerID: "provider-a",
     inputTokens: 10,
@@ -46,6 +55,17 @@ describe("database", () => {
     const sessions = getSessions(db, 10);
     expect(sessions.length).toBe(1);
     expect(sessions[0]?.id).toBe("ses-1");
+
+    const providers = getProviderStats(db);
+    expect(providers.length).toBe(1);
+    expect(providers[0]?.providerID).toBe("provider-a");
+
+    const filteredTotals = getSessionStatsWithFilters(db, { projectID: "/tmp/project-a" });
+    expect(filteredTotals.requestCount).toBe(1);
+
+    const projects = getProjects(db, 10);
+    expect(projects.length).toBe(1);
+    expect(projects[0]?.projectID).toBe("/tmp/project-a");
 
     db.close();
   });

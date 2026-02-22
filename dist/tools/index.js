@@ -4,7 +4,8 @@ import { createOpenTool } from "./open";
 import { createStatsTool } from "./stats";
 import { createStatusTool } from "./status";
 import { createToggleTool } from "./toggle";
-export function createTools(client, state, db, shell, onBackgroundToggle) {
+import { createUploadFlushTool, createUploadStatusTool } from "./upload";
+export function createTools(client, state, db, shell, onBackgroundToggle, onUploadFlush, getUploadInfo) {
     return {
         ts: createOpenTool(client, state, shell),
         "ts-toggle": createToggleTool(client, state),
@@ -12,6 +13,8 @@ export function createTools(client, state, db, shell, onBackgroundToggle) {
         "ts-stats": createStatsTool(db),
         "ts-history": createHistoryTool(db),
         "ts-bg": createBackgroundTool(state, onBackgroundToggle),
+        "ts-upload": createUploadStatusTool(db, getUploadInfo),
+        "ts-upload-flush": createUploadFlushTool(db, onUploadFlush, getUploadInfo),
     };
 }
 //# sourceMappingURL=index.js.map

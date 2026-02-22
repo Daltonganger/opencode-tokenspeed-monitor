@@ -1,12 +1,28 @@
 import type { Plugin } from "@opencode-ai/plugin";
 import { MetricsCollector } from "./metrics/collector";
+import { getAnonProjectID } from "./privacy/anon";
 import { migrate } from "./storage/migrations";
 import { saveRequest } from "./storage/database";
 import { createTools } from "./tools";
 import { startApiServer, type ApiServerHandle } from "./server/server";
+import { startUploadDispatcher, type UploadDispatcherHandle } from "./upload/dispatcher";
+import { enqueueRequestBucket } from "./upload/queue";
 import type { PluginState, RequestMetrics } from "./types";
 
 const DEFAULT_BG_PORT = 3456;
+
+function readStringField(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value : null;
+}
+
+function resolveProjectRoot(input: unknown): string {
+  if (typeof input !== "object" || input === null) return process.cwd();
+  const worktree = readStringField(Reflect.get(input, "worktree"));
+  if (worktree) return worktree;
+  const directory = readStringField(Reflect.get(input, "directory"));
+  if (directory) return directory;
+  return process.cwd();
+}
 
 function parsePort(value: string | undefined): number {
   if (!value) return DEFAULT_BG_PORT;
@@ -15,13 +31,28 @@ function parsePort(value: string | undefined): number {
   return port;
 }
 
+function parseBooleanFlag(value: string | undefined): boolean {
+  if (!value) return false;
+  return ["1", "true", "yes", "on"].includes(value.toLowerCase());
+}
+
+function parsePositiveInt(value: string | undefined, fallback: number): number {
+  if (!value) return fallback;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return Math.floor(parsed);
+}
+
 function formatMetricsLine(metrics: RequestMetrics): string {
   const duration = metrics.durationMs !== undefined ? `${(metrics.durationMs / 1000).toFixed(1)}s` : "N/A";
   const tps = metrics.outputTps !== undefined ? `${metrics.outputTps} tok/s` : "N/A";
   return `${metrics.modelID} | ${tps} | ${duration}`;
 }
 
-export const TokenSpeedMonitor: Plugin = async ({ client, $ }) => {
+export const TokenSpeedMonitor: Plugin = async input => {
+  const { client, $ } = input;
+  const projectRoot = resolveProjectRoot(input);
+
   const state: PluginState = {
     enabled: true,
     backgroundEnabled: true,
@@ -38,12 +69,24 @@ export const TokenSpeedMonitor: Plugin = async ({ client, $ }) => {
 
   const db = migrate();
   let apiServer: ApiServerHandle | null = null;
+  const bucketSeconds = parsePositiveInt(process.env.TS_UPLOAD_BUCKET_SEC, 300);
+  const uploadEnabled = parseBooleanFlag(process.env.TS_UPLOAD_ENABLED);
+  const uploadIntervalSeconds = parsePositiveInt(process.env.TS_UPLOAD_INTERVAL_SEC, 30);
+  const hubURL = process.env.TS_HUB_URL?.trim() ?? "";
+  let uploadDispatcher: UploadDispatcherHandle | null = null;
 
   const ensureApiServer = async () => {
     if (apiServer) return apiServer;
 
     const port = parsePort(process.env.TS_BG_PORT);
-    apiServer = startApiServer(db, port);
+    apiServer = startApiServer(db, port, {
+      uploadEnabled,
+      uploadHubURL: hubURL || null,
+      flushUploadNow: async () => {
+        if (!uploadDispatcher) return;
+        await uploadDispatcher.flushNow();
+      },
+    });
     state.apiUrl = apiServer.url;
     await client.app.log({
       body: {
@@ -57,22 +100,41 @@ export const TokenSpeedMonitor: Plugin = async ({ client, $ }) => {
   };
 
   const onCompleted = async (metrics: RequestMetrics) => {
-    saveRequest(db, metrics);
+    const storedMetrics: RequestMetrics = {
+      ...metrics,
+      projectID: projectRoot,
+    };
+
+    saveRequest(db, storedMetrics);
+
+    try {
+      const anonProjectID = getAnonProjectID(storedMetrics.projectID ?? "unknown-project");
+      enqueueRequestBucket(db, storedMetrics, anonProjectID, bucketSeconds);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await client.app.log({
+        body: {
+          service: "tokenspeed-monitor",
+          level: "warn",
+          message: `TokenSpeed queue enqueue failed: ${message}`,
+        },
+      });
+    }
 
     state.sessionStats.requestCount += 1;
-    state.sessionStats.totalInputTokens += metrics.inputTokens;
-    state.sessionStats.totalOutputTokens += metrics.outputTokens;
-    state.sessionStats.totalCost += metrics.cost ?? 0;
+    state.sessionStats.totalInputTokens += storedMetrics.inputTokens;
+    state.sessionStats.totalOutputTokens += storedMetrics.outputTokens;
+    state.sessionStats.totalCost += storedMetrics.cost ?? 0;
 
     if (apiServer) {
       apiServer.publish({
-        sessionID: metrics.sessionID,
-        messageID: metrics.messageID,
-        modelID: metrics.modelID,
-        outputTokens: metrics.outputTokens,
-        outputTps: metrics.outputTps,
-        durationMs: metrics.durationMs,
-        completedAt: metrics.completedAt,
+        sessionID: storedMetrics.sessionID,
+        messageID: storedMetrics.messageID,
+        modelID: storedMetrics.modelID,
+        outputTokens: storedMetrics.outputTokens,
+        outputTps: storedMetrics.outputTps,
+        durationMs: storedMetrics.durationMs,
+        completedAt: storedMetrics.completedAt,
       });
     }
 
@@ -82,14 +144,14 @@ export const TokenSpeedMonitor: Plugin = async ({ client, $ }) => {
       body: {
         service: "tokenspeed-monitor",
         level: "info",
-        message: `TokenSpeed: ${formatMetricsLine(metrics)}`,
+        message: `TokenSpeed: ${formatMetricsLine(storedMetrics)}`,
       },
     });
 
     await client.tui.showToast({
       body: {
         title: "TokenSpeed",
-        message: formatMetricsLine(metrics),
+        message: formatMetricsLine(storedMetrics),
         variant: "info",
         duration: 3500,
       },
@@ -109,13 +171,58 @@ export const TokenSpeedMonitor: Plugin = async ({ client, $ }) => {
     };
   };
 
+  const getUploadInfo = () => ({
+    enabled: uploadEnabled,
+    hubURL: hubURL || null,
+  });
+
+  const onUploadFlush = async () => {
+    if (!uploadDispatcher) {
+      return {
+        ok: false,
+        detail: "Upload dispatcher is not enabled. Set TS_UPLOAD_ENABLED=1 and TS_HUB_URL.",
+      };
+    }
+
+    await uploadDispatcher.flushNow();
+    return {
+      ok: true,
+      detail: "Upload queue flush triggered.",
+    };
+  };
+
   await ensureApiServer();
+
+  if (uploadEnabled && hubURL) {
+    uploadDispatcher = startUploadDispatcher({
+      db,
+      hubURL,
+      intervalSeconds: uploadIntervalSeconds,
+      logger: async message => {
+        await client.app.log({
+          body: {
+            service: "tokenspeed-monitor",
+            level: "info",
+            message,
+          },
+        });
+      },
+    });
+
+    await client.app.log({
+      body: {
+        service: "tokenspeed-monitor",
+        level: "info",
+        message: `TokenSpeed upload dispatcher enabled (${hubURL})`,
+      },
+    });
+  }
 
   return {
     event: async ({ event }) => {
       await collector.handle(event);
     },
-    tool: createTools(client, state, db, $, onBackgroundToggle),
+    tool: createTools(client, state, db, $, onBackgroundToggle, onUploadFlush, getUploadInfo),
   };
 };
 

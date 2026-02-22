@@ -1,4 +1,4 @@
-import type { ModelStats, RequestMetrics } from "../types";
+import type { ModelStats, ProviderStats, RequestMetrics } from "../types";
 export interface SessionAverages {
     avgOutputTps: number;
     avgTotalTps: number;
@@ -25,4 +25,5 @@ export declare function withComputedSpeed(metrics: RequestMetrics): RequestMetri
 export declare function computeSessionTotals(items: RequestMetrics[]): SessionTotals;
 export declare function computeSessionAverages(items: RequestMetrics[]): SessionAverages;
 export declare function aggregateModelStats(items: RequestMetrics[]): ModelStats[];
+export declare function aggregateProviderStats(items: RequestMetrics[]): ProviderStats[];
 //# sourceMappingURL=calculator.d.ts.map

@@ -46,6 +46,8 @@ describe("plugin entry", () => {
       "ts-stats",
       "ts-status",
       "ts-toggle",
+      "ts-upload",
+      "ts-upload-flush",
     ]);
   });
 

@@ -1,11 +1,12 @@
 import type { Database } from "bun:sqlite";
-import type { ModelStats, RequestMetrics } from "../types";
-import { aggregateModelStats } from "../metrics/calculator";
+import type { ModelStats, ProjectStats, ProviderStats, RequestMetrics } from "../types";
+import { aggregateModelStats, aggregateProviderStats } from "../metrics/calculator";
 
 type RequestRow = {
   id: string;
   session_id: string;
   message_id: string;
+  project_id: string | null;
   model_id: string;
   provider_id: string | null;
   agent: string | null;
@@ -23,14 +24,38 @@ type RequestRow = {
   cost: number | null;
 };
 
+export type RequestFilters = {
+  projectID?: string;
+  providerID?: string;
+  modelID?: string;
+};
+
+type ProjectRow = {
+  project_id: string;
+  name: string;
+  root_path: string;
+  request_count: number;
+  total_input_tokens: number;
+  total_output_tokens: number;
+  total_tokens: number;
+  total_cost: number;
+  last_seen: number | null;
+};
+
 export function saveRequest(db: Database, item: RequestMetrics): void {
+  const projectID = item.projectID ?? null;
+  if (projectID) {
+    const projectName = projectID.split(/[/\\]/).filter(Boolean).at(-1) ?? "project";
+    upsertProject(db, projectID, projectName, projectID, item.completedAt ?? item.startedAt);
+  }
+
   db.query(
     `INSERT OR REPLACE INTO requests (
-      id, session_id, message_id, model_id, provider_id, agent,
+      id, session_id, message_id, project_id, model_id, provider_id, agent,
       input_tokens, output_tokens, reasoning_tokens, cache_read, cache_write, total_tokens,
       started_at, completed_at, duration_ms, output_tps, total_tps, cost
     ) VALUES (
-      $id, $session_id, $message_id, $model_id, $provider_id, $agent,
+      $id, $session_id, $message_id, $project_id, $model_id, $provider_id, $agent,
       $input_tokens, $output_tokens, $reasoning_tokens, $cache_read, $cache_write, $total_tokens,
       $started_at, $completed_at, $duration_ms, $output_tps, $total_tps, $cost
     );`,
@@ -38,6 +63,7 @@ export function saveRequest(db: Database, item: RequestMetrics): void {
     id: item.id,
     session_id: item.sessionID,
     message_id: item.messageID,
+    project_id: projectID,
     model_id: item.modelID,
     provider_id: item.providerID ?? null,
     agent: item.agent ?? null,
@@ -55,19 +81,50 @@ export function saveRequest(db: Database, item: RequestMetrics): void {
     cost: item.cost ?? null,
   });
 
-  upsertSession(db, item.sessionID, item.startedAt, item.completedAt ?? item.startedAt);
+  upsertSession(db, item.sessionID, projectID, item.startedAt, item.completedAt ?? item.startedAt);
 }
 
-export function upsertSession(db: Database, sessionID: string, startedAt: number, lastActivity: number): void {
+export function upsertProject(
+  db: Database,
+  projectID: string,
+  name: string,
+  rootPath: string,
+  lastSeen: number,
+): void {
   db.query(
-    `INSERT INTO sessions (id, started_at, last_activity, request_count)
-     VALUES ($id, $started_at, $last_activity, 1)
+    `INSERT INTO projects (id, name, root_path, created_at, last_seen)
+     VALUES ($id, $name, $root_path, $created_at, $last_seen)
      ON CONFLICT(id) DO UPDATE SET
+       name = excluded.name,
+       root_path = excluded.root_path,
+       last_seen = MAX(COALESCE(last_seen, 0), excluded.last_seen);`,
+  ).run({
+    id: projectID,
+    name,
+    root_path: rootPath,
+    created_at: Math.floor(Date.now() / 1000),
+    last_seen: lastSeen,
+  });
+}
+
+export function upsertSession(
+  db: Database,
+  sessionID: string,
+  projectID: string | null,
+  startedAt: number,
+  lastActivity: number,
+): void {
+  db.query(
+    `INSERT INTO sessions (id, project_id, started_at, last_activity, request_count)
+     VALUES ($id, $project_id, $started_at, $last_activity, 1)
+     ON CONFLICT(id) DO UPDATE SET
+       project_id = COALESCE(sessions.project_id, excluded.project_id),
        started_at = MIN(started_at, excluded.started_at),
        last_activity = MAX(last_activity, excluded.last_activity),
        request_count = request_count + 1;`,
   ).run({
     id: sessionID,
+    project_id: projectID,
     started_at: startedAt,
     last_activity: lastActivity,
   });
@@ -78,6 +135,7 @@ function mapRequestRow(row: RequestRow): RequestMetrics {
     id: row.id,
     sessionID: row.session_id,
     messageID: row.message_id,
+    projectID: row.project_id ?? undefined,
     modelID: row.model_id,
     providerID: row.provider_id ?? undefined,
     agent: row.agent ?? undefined,
@@ -97,18 +155,28 @@ function mapRequestRow(row: RequestRow): RequestMetrics {
 }
 
 export function getRecentRequests(db: Database, limit = 100): RequestMetrics[] {
+  return getFilteredRequests(db, {}, limit);
+}
+
+export function getFilteredRequests(db: Database, filters: RequestFilters = {}, limit = 100): RequestMetrics[] {
   const safeLimit = Math.max(1, Math.min(limit, 1000));
+  const projectID = filters.projectID?.trim() || null;
+  const providerID = filters.providerID?.trim() || null;
+  const modelID = filters.modelID?.trim() || null;
   const rows = db
-    .query<RequestRow, { limit: number }>(
+    .query<RequestRow, { project_id: string | null; provider_id: string | null; model_id: string | null; limit: number }>(
       `SELECT
-        id, session_id, message_id, model_id, provider_id, agent,
+        id, session_id, message_id, project_id, model_id, provider_id, agent,
         input_tokens, output_tokens, reasoning_tokens, cache_read, cache_write, total_tokens,
         started_at, completed_at, duration_ms, output_tps, total_tps, cost
       FROM requests
+      WHERE ($project_id IS NULL OR project_id = $project_id)
+        AND ($provider_id IS NULL OR provider_id = $provider_id)
+        AND ($model_id IS NULL OR model_id = $model_id)
       ORDER BY started_at DESC
       LIMIT $limit;`,
     )
-    .all({ limit: safeLimit });
+    .all({ project_id: projectID, provider_id: providerID, model_id: modelID, limit: safeLimit });
   return rows.map(mapRequestRow);
 }
 
@@ -117,7 +185,7 @@ export function getRequestsByModel(db: Database, modelID: string, limit = 100): 
   const rows = db
     .query<RequestRow, { model_id: string; limit: number }>(
       `SELECT
-        id, session_id, message_id, model_id, provider_id, agent,
+        id, session_id, message_id, project_id, model_id, provider_id, agent,
         input_tokens, output_tokens, reasoning_tokens, cache_read, cache_write, total_tokens,
         started_at, completed_at, duration_ms, output_tps, total_tps, cost
       FROM requests
@@ -136,6 +204,19 @@ export function getSessionStats(db: Database): {
   totalTokens: number;
   totalCost: number;
 } {
+  return getSessionStatsWithFilters(db, {});
+}
+
+export function getSessionStatsWithFilters(db: Database, filters: RequestFilters): {
+  requestCount: number;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  totalTokens: number;
+  totalCost: number;
+} {
+  const projectID = filters.projectID?.trim() || null;
+  const providerID = filters.providerID?.trim() || null;
+  const modelID = filters.modelID?.trim() || null;
   const row = db
     .query<
       {
@@ -145,7 +226,7 @@ export function getSessionStats(db: Database): {
         total_tokens: number;
         total_cost: number;
       },
-      []
+      { project_id: string | null; provider_id: string | null; model_id: string | null }
     >(
       `SELECT
         COUNT(*) as request_count,
@@ -153,9 +234,12 @@ export function getSessionStats(db: Database): {
         COALESCE(SUM(output_tokens), 0) as total_output_tokens,
         COALESCE(SUM(total_tokens), 0) as total_tokens,
         COALESCE(SUM(cost), 0) as total_cost
-      FROM requests;`,
+      FROM requests
+      WHERE ($project_id IS NULL OR project_id = $project_id)
+        AND ($provider_id IS NULL OR provider_id = $provider_id)
+        AND ($model_id IS NULL OR model_id = $model_id);`,
     )
-    .get();
+    .get({ project_id: projectID, provider_id: providerID, model_id: modelID });
 
   if (!row) {
     return {
@@ -176,9 +260,49 @@ export function getSessionStats(db: Database): {
   };
 }
 
-export function getModelStats(db: Database): ModelStats[] {
-  const requests = getRecentRequests(db, 10_000);
+export function getModelStats(db: Database, filters: RequestFilters = {}): ModelStats[] {
+  const requests = getFilteredRequests(db, filters, 10_000);
   return aggregateModelStats(requests);
+}
+
+export function getProviderStats(db: Database, filters: RequestFilters = {}): ProviderStats[] {
+  const requests = getFilteredRequests(db, filters, 10_000);
+  return aggregateProviderStats(requests);
+}
+
+export function getProjects(db: Database, limit = 100): ProjectStats[] {
+  const safeLimit = Math.max(1, Math.min(limit, 1000));
+  const rows = db
+    .query<ProjectRow, { limit: number }>(
+      `SELECT
+         p.id AS project_id,
+         p.name AS name,
+         p.root_path AS root_path,
+         COUNT(r.id) AS request_count,
+         COALESCE(SUM(r.input_tokens), 0) AS total_input_tokens,
+         COALESCE(SUM(r.output_tokens), 0) AS total_output_tokens,
+         COALESCE(SUM(r.total_tokens), 0) AS total_tokens,
+         COALESCE(SUM(r.cost), 0) AS total_cost,
+         MAX(COALESCE(r.completed_at, r.started_at)) AS last_seen
+       FROM projects p
+       LEFT JOIN requests r ON r.project_id = p.id
+       GROUP BY p.id, p.name, p.root_path
+       ORDER BY COALESCE(last_seen, 0) DESC
+       LIMIT $limit;`,
+    )
+    .all({ limit: safeLimit });
+
+  return rows.map(row => ({
+    projectID: row.project_id,
+    name: row.name,
+    rootPath: row.root_path,
+    requestCount: row.request_count,
+    totalInputTokens: row.total_input_tokens,
+    totalOutputTokens: row.total_output_tokens,
+    totalTokens: row.total_tokens,
+    totalCost: row.total_cost,
+    lastSeen: row.last_seen,
+  }));
 }
 
 export function getSessions(

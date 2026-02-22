@@ -22,10 +22,10 @@ export function createOpenTool(
   shell: PluginInput["$"],
 ): ToolDefinition {
   return tool({
-    description: "Open TokenSpeed API page in browser",
+    description: "Open TokenSpeed dashboard in browser",
     args: {},
     async execute() {
-      const url = state.apiUrl ? `${state.apiUrl}api/stats` : "http://localhost:3456/api/stats";
+      const url = state.apiUrl ? state.apiUrl : "http://localhost:3456/";
       const command = platformOpenCommand(shell, url);
 
       let opened = false;

@@ -2,6 +2,7 @@ export interface RequestMetrics {
   id: string;
   sessionID: string;
   messageID: string;
+  projectID?: string;
   modelID: string;
   providerID?: string;
   agent?: string;
@@ -27,6 +28,30 @@ export interface ModelStats {
   avgOutputTps: number | null;
   minOutputTps: number | null;
   maxOutputTps: number | null;
+  lastSeen: number | null;
+}
+
+export interface ProviderStats {
+  providerID: string;
+  requestCount: number;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  avgOutputTps: number | null;
+  minOutputTps: number | null;
+  maxOutputTps: number | null;
+  totalCost: number;
+  lastSeen: number | null;
+}
+
+export interface ProjectStats {
+  projectID: string;
+  name: string;
+  rootPath: string;
+  requestCount: number;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  totalTokens: number;
+  totalCost: number;
   lastSeen: number | null;
 }
 

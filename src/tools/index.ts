@@ -7,6 +7,7 @@ import { createOpenTool } from "./open";
 import { createStatsTool } from "./stats";
 import { createStatusTool } from "./status";
 import { createToggleTool } from "./toggle";
+import { createUploadFlushTool, createUploadStatusTool, type UploadFlushResult } from "./upload";
 
 export function createTools(
   client: PluginInput["client"],
@@ -14,6 +15,8 @@ export function createTools(
   db: Database,
   shell: PluginInput["$"],
   onBackgroundToggle: (enabled: boolean) => Promise<BackgroundToggleResult>,
+  onUploadFlush: () => Promise<UploadFlushResult>,
+  getUploadInfo: () => { enabled: boolean; hubURL: string | null },
 ): Record<string, ToolDefinition> {
   return {
     ts: createOpenTool(client, state, shell),
@@ -22,5 +25,7 @@ export function createTools(
     "ts-stats": createStatsTool(db),
     "ts-history": createHistoryTool(db),
     "ts-bg": createBackgroundTool(state, onBackgroundToggle),
+    "ts-upload": createUploadStatusTool(db, getUploadInfo),
+    "ts-upload-flush": createUploadFlushTool(db, onUploadFlush, getUploadInfo),
   };
 }

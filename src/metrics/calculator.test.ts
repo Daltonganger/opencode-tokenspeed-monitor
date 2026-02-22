@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { aggregateModelStats, outputTps, totalTps, withComputedSpeed } from "./calculator";
+import { aggregateModelStats, aggregateProviderStats, outputTps, totalTps, withComputedSpeed } from "./calculator";
 import type { RequestMetrics } from "../types";
 
 function baseMetrics(overrides: Partial<RequestMetrics> = {}): RequestMetrics {
@@ -47,5 +47,21 @@ describe("calculator", () => {
     expect(modelA?.requestCount).toBe(2);
     expect(modelA?.totalOutputTokens).toBe(300);
     expect(modelB?.requestCount).toBe(1);
+  });
+
+  test("aggregates per-provider stats", () => {
+    const items = [
+      withComputedSpeed(baseMetrics({ id: "r1", messageID: "m1", providerID: "openai", cost: 0.2 })),
+      withComputedSpeed(baseMetrics({ id: "r2", messageID: "m2", providerID: "openai", cost: 0.2 })),
+      withComputedSpeed(baseMetrics({ id: "r3", messageID: "m3", providerID: "anthropic", cost: 0.1 })),
+    ];
+
+    const stats = aggregateProviderStats(items);
+    const openai = stats.find(s => s.providerID === "openai");
+    const anthropic = stats.find(s => s.providerID === "anthropic");
+
+    expect(openai?.requestCount).toBe(2);
+    expect(openai?.totalCost).toBe(0.4);
+    expect(anthropic?.requestCount).toBe(1);
   });
 });
