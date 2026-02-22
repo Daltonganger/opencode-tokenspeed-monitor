@@ -37,7 +37,9 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "test": "bun test src/**/*.test.ts",
-    "pack:check": "npm pack --dry-run"
+    "hub:start": "bun src/hub/main.ts",
+    "pack:check": "npm pack --dry-run",
+    "release:check": "bun test src/**/*.test.ts && npm run build && npm run pack:check"
   },
   "peerDependencies": {
     "@opencode-ai/plugin": ">=0.1.0"

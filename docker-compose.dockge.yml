@@ -1,0 +1,34 @@
+services:
+  tokenspeed-hub:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: tokenspeed-hub
+    restart: unless-stopped
+    ports:
+      - "3476:3476"
+    environment:
+      TS_HUB_PORT: "3476"
+      TS_HUB_DB_PATH: /data/hub.sqlite
+      TS_HUB_SIGNING_KEY: ${TS_HUB_SIGNING_KEY:-}
+      TS_HUB_INVITE_TOKEN: ${TS_HUB_INVITE_TOKEN:-}
+      TS_HUB_ADMIN_TOKEN: ${TS_HUB_ADMIN_TOKEN:-}
+      TS_HUB_ADMIN_LOGIN_WINDOW_SEC: ${TS_HUB_ADMIN_LOGIN_WINDOW_SEC:-300}
+      TS_HUB_ADMIN_LOGIN_MAX_ATTEMPTS: ${TS_HUB_ADMIN_LOGIN_MAX_ATTEMPTS:-10}
+    volumes:
+      - tokenspeed_hub_data:/data
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "bun",
+          "-e",
+          "fetch('http://127.0.0.1:' + (process.env.TS_HUB_PORT || '3476') + '/v1/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+volumes:
+  tokenspeed_hub_data:

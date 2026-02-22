@@ -1,0 +1,1683 @@
+import { createHmac, randomUUID } from "node:crypto";
+import { activateHubDevice, bulkSetHubDevicesStatus, cleanupExpiredNonces, getHubDevice, getHubProviders, listHubDevices, getHubModels, getHubProjects, getHubSummary, getHubTimeseries, isNonceUsed, openHubDatabase, registerHubDevice, revokeHubDevice, storeNonce, touchHubDeviceSeen, upsertHubBuckets, } from "./database";
+const DEFAULT_HUB_PORT = 3476;
+const TIMESTAMP_WINDOW_SECONDS = 300;
+const DEFAULT_ADMIN_LOGIN_WINDOW_SECONDS = 300;
+const DEFAULT_ADMIN_LOGIN_MAX_ATTEMPTS = 10;
+const CORS_HEADERS = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-TS-Admin-Token, X-TS-Device-ID, X-TS-Timestamp, X-TS-Nonce, X-TS-Signature",
+};
+function parsePositiveInt(value, fallback, min, max) {
+    if (!value)
+        return fallback;
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed))
+        return fallback;
+    return Math.max(min, Math.min(max, Math.floor(parsed)));
+}
+function parsePort(value) {
+    if (!value)
+        return DEFAULT_HUB_PORT;
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed) || parsed < 0 || parsed > 65535)
+        return DEFAULT_HUB_PORT;
+    return parsed;
+}
+function withCors(response) {
+    const headers = new Headers(response.headers);
+    for (const [k, v] of Object.entries(CORS_HEADERS)) {
+        headers.set(k, v);
+    }
+    return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers,
+    });
+}
+function json(data, status = 200) {
+    return withCors(Response.json(data, { status }));
+}
+function err(status, message) {
+    return withCors(new Response(message, { status }));
+}
+function preflight() {
+    return new Response(null, { status: 204, headers: CORS_HEADERS });
+}
+function parseRange(url) {
+    const fromRaw = url.searchParams.get("from");
+    const toRaw = url.searchParams.get("to");
+    const limitRaw = url.searchParams.get("limit");
+    const from = fromRaw ? Number(fromRaw) : undefined;
+    const to = toRaw ? Number(toRaw) : undefined;
+    const limitParsed = limitRaw ? Number(limitRaw) : 100;
+    const limit = Number.isFinite(limitParsed) ? Math.max(1, Math.min(1000, Math.floor(limitParsed))) : 100;
+    return {
+        from: Number.isFinite(from) ? from : undefined,
+        to: Number.isFinite(to) ? to : undefined,
+        limit,
+    };
+}
+function parseMetric(url) {
+    const metric = url.searchParams.get("metric")?.trim() ?? "tokens";
+    if (metric === "cost" || metric === "tps")
+        return metric;
+    return "tokens";
+}
+function parseGroupBy(url) {
+    const groupBy = url.searchParams.get("groupBy")?.trim() ?? "hour";
+    if (groupBy === "day")
+        return "day";
+    return "hour";
+}
+function parseDashboardFilters(url) {
+    const anonProjectId = url.searchParams.get("anonProjectId")?.trim();
+    const providerId = url.searchParams.get("providerId")?.trim();
+    const modelId = url.searchParams.get("modelId")?.trim();
+    return {
+        anonProjectId: anonProjectId || undefined,
+        providerId: providerId || undefined,
+        modelId: modelId || undefined,
+    };
+}
+function csvCell(value) {
+    if (value === null || value === undefined)
+        return "";
+    const text = String(value);
+    if (!/[",\n]/.test(text))
+        return text;
+    return `"${text.replaceAll("\"", "\"\"")}"`;
+}
+function csvRow(values) {
+    return values.map(csvCell).join(",");
+}
+function buildDashboardExportCsv(db, url) {
+    const range = parseRange(url);
+    const filters = parseDashboardFilters(url);
+    const groupBy = parseGroupBy(url);
+    const summary = getHubSummary(db, range.from, range.to, filters);
+    const models = getHubModels(db, range.from, range.to, range.limit, filters);
+    const providers = getHubProviders(db, range.from, range.to, range.limit, filters);
+    const projects = getHubProjects(db, range.from, range.to, range.limit, filters);
+    const tokenSeries = getHubTimeseries(db, "tokens", groupBy, range.from, range.to, range.limit, filters);
+    const costSeries = getHubTimeseries(db, "cost", groupBy, range.from, range.to, range.limit, filters);
+    const tpsSeries = getHubTimeseries(db, "tps", groupBy, range.from, range.to, range.limit, filters);
+    const lines = [];
+    lines.push(csvRow([
+        "rowType",
+        "from",
+        "to",
+        "anonProjectId",
+        "providerId",
+        "modelId",
+        "timestamp",
+        "metric",
+        "groupBy",
+        "requestCount",
+        "inputTokens",
+        "outputTokens",
+        "reasoningTokens",
+        "cacheReadTokens",
+        "cacheWriteTokens",
+        "totalCost",
+        "avgOutputTps",
+        "minOutputTps",
+        "maxOutputTps",
+        "value",
+    ]));
+    lines.push(csvRow([
+        "summary",
+        range.from ?? "",
+        range.to ?? "",
+        filters.anonProjectId ?? "",
+        filters.providerId ?? "",
+        filters.modelId ?? "",
+        "",
+        "",
+        "",
+        summary.requestCount,
+        summary.totalInputTokens,
+        summary.totalOutputTokens,
+        summary.totalReasoningTokens,
+        summary.totalCacheReadTokens,
+        summary.totalCacheWriteTokens,
+        summary.totalCost,
+        "",
+        "",
+        "",
+        "",
+    ]));
+    for (const model of models) {
+        lines.push(csvRow([
+            "model",
+            range.from ?? "",
+            range.to ?? "",
+            filters.anonProjectId ?? "",
+            model.providerId,
+            model.modelId,
+            "",
+            "",
+            "",
+            model.requestCount,
+            model.totalInputTokens,
+            model.totalOutputTokens,
+            "",
+            "",
+            "",
+            model.totalCost,
+            model.avgOutputTps,
+            model.minOutputTps,
+            model.maxOutputTps,
+            "",
+        ]));
+    }
+    for (const provider of providers) {
+        lines.push(csvRow([
+            "provider",
+            range.from ?? "",
+            range.to ?? "",
+            filters.anonProjectId ?? "",
+            provider.providerId,
+            "",
+            "",
+            "",
+            "",
+            provider.requestCount,
+            provider.totalInputTokens,
+            provider.totalOutputTokens,
+            "",
+            "",
+            "",
+            provider.totalCost,
+            provider.avgOutputTps,
+            provider.minOutputTps,
+            provider.maxOutputTps,
+            "",
+        ]));
+    }
+    for (const project of projects) {
+        lines.push(csvRow([
+            "project",
+            range.from ?? "",
+            range.to ?? "",
+            project.anonProjectId,
+            "",
+            "",
+            project.lastBucketEnd ?? "",
+            "",
+            "",
+            project.requestCount,
+            project.totalInputTokens,
+            project.totalOutputTokens,
+            "",
+            "",
+            "",
+            project.totalCost,
+            "",
+            "",
+            "",
+            "",
+        ]));
+    }
+    const appendSeries = (metric, points) => {
+        for (const point of points) {
+            lines.push(csvRow([
+                "timeseries",
+                range.from ?? "",
+                range.to ?? "",
+                filters.anonProjectId ?? "",
+                filters.providerId ?? "",
+                filters.modelId ?? "",
+                point.ts,
+                metric,
+                groupBy,
+                point.requestCount,
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                point.value,
+            ]));
+        }
+    };
+    appendSeries("tokens", tokenSeries);
+    appendSeries("cost", costSeries);
+    appendSeries("tps", tpsSeries);
+    return `${lines.join("\n")}\n`;
+}
+function buildDashboardExportJson(db, url) {
+    const range = parseRange(url);
+    const filters = parseDashboardFilters(url);
+    const groupBy = parseGroupBy(url);
+    const summary = getHubSummary(db, range.from, range.to, filters);
+    const models = getHubModels(db, range.from, range.to, range.limit, filters);
+    const providers = getHubProviders(db, range.from, range.to, range.limit, filters);
+    const projects = getHubProjects(db, range.from, range.to, range.limit, filters);
+    const tokenSeries = getHubTimeseries(db, "tokens", groupBy, range.from, range.to, range.limit, filters);
+    const costSeries = getHubTimeseries(db, "cost", groupBy, range.from, range.to, range.limit, filters);
+    const tpsSeries = getHubTimeseries(db, "tps", groupBy, range.from, range.to, range.limit, filters);
+    return {
+        generatedAt: Math.floor(Date.now() / 1000),
+        query: {
+            from: range.from ?? null,
+            to: range.to ?? null,
+            limit: range.limit,
+            groupBy,
+            filters: {
+                anonProjectId: filters.anonProjectId ?? null,
+                providerId: filters.providerId ?? null,
+                modelId: filters.modelId ?? null,
+            },
+        },
+        summary,
+        models,
+        providers,
+        projects,
+        timeseries: {
+            tokens: tokenSeries,
+            cost: costSeries,
+            tps: tpsSeries,
+        },
+    };
+}
+function hubDashboardHtml() {
+    return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TokenSpeed Hub Dashboard</title>
+  <style>
+    :root {
+      --bg: #eef3fa;
+      --panel: #ffffff;
+      --ink: #0f1a2b;
+      --muted: #5b6778;
+      --line: #d7dfeb;
+      --brand: #1268ff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: radial-gradient(circle at top right, #e4ecff 0%, var(--bg) 55%);
+      color: var(--ink);
+    }
+    main {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 24px;
+      display: grid;
+      gap: 14px;
+    }
+    .head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: baseline;
+    }
+    h1 { margin: 0; font-size: 1.5rem; }
+    .muted { margin: 0; color: var(--muted); }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px;
+      box-shadow: 0 1px 2px rgba(10, 20, 40, 0.05);
+    }
+    .filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: end;
+    }
+    label {
+      display: grid;
+      gap: 4px;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+    input, button {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 7px 10px;
+      background: #fff;
+      color: var(--ink);
+      font-size: 0.9rem;
+    }
+    button { cursor: pointer; background: #f7faff; }
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      gap: 10px;
+    }
+    .label { font-size: 0.76rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; }
+    .value { margin-top: 6px; font-size: 1.2rem; font-weight: 600; }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 14px;
+    }
+    @media (min-width: 980px) {
+      .grid { grid-template-columns: 1fr 1fr; }
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+      font-size: 0.9rem;
+    }
+    th, td {
+      text-align: left;
+      border-bottom: 1px solid var(--line);
+      padding: 7px 8px;
+      vertical-align: top;
+    }
+    th { font-size: 0.76rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; }
+    .footer { color: var(--muted); font-size: 0.8rem; }
+    a { color: var(--brand); text-decoration: none; }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="head">
+      <h1>TokenSpeed Hub Dashboard</h1>
+      <p class="muted" id="updated">Loading...</p>
+    </div>
+
+    <section class="panel filters">
+      <label>From (unix sec)
+        <input id="from" type="number" min="0" step="1" placeholder="optional">
+      </label>
+      <label>To (unix sec)
+        <input id="to" type="number" min="0" step="1" placeholder="optional">
+      </label>
+      <label>Provider
+        <input id="provider" type="text" placeholder="optional">
+      </label>
+      <label>Model
+        <input id="model" type="text" placeholder="optional">
+      </label>
+      <label>Anon project
+        <input id="anonProject" type="text" placeholder="optional">
+      </label>
+      <button id="apply" type="button">Apply</button>
+      <button id="last24h" type="button">Last 24h</button>
+      <button id="clear" type="button">Clear</button>
+    </section>
+
+    <section class="cards">
+      <div class="panel"><div class="label">Requests</div><div class="value" id="requests">-</div></div>
+      <div class="panel"><div class="label">Input Tokens</div><div class="value" id="input">-</div></div>
+      <div class="panel"><div class="label">Output Tokens</div><div class="value" id="output">-</div></div>
+      <div class="panel"><div class="label">Reasoning Tokens</div><div class="value" id="reasoning">-</div></div>
+      <div class="panel"><div class="label">Cache Read</div><div class="value" id="cacheRead">-</div></div>
+      <div class="panel"><div class="label">Total Cost</div><div class="value" id="cost">-</div></div>
+    </section>
+
+    <section class="grid">
+      <div class="panel">
+        <strong>Top Models</strong>
+        <table>
+          <thead><tr><th>Provider</th><th>Model</th><th>Req</th><th>Cost</th><th>Avg TPS</th></tr></thead>
+          <tbody id="models"></tbody>
+        </table>
+      </div>
+      <div class="panel">
+        <strong>Top Providers</strong>
+        <table>
+          <thead><tr><th>Provider</th><th>Req</th><th>Input</th><th>Output</th><th>Cost</th></tr></thead>
+          <tbody id="providers"></tbody>
+        </table>
+      </div>
+      <div class="panel">
+        <strong>Top Projects (anon)</strong>
+        <table>
+          <thead><tr><th>Project</th><th>Req</th><th>Input</th><th>Output</th><th>Cost</th></tr></thead>
+          <tbody id="projects"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <strong>Timeseries</strong>
+      <table>
+        <thead><tr><th>Timestamp</th><th>Tokens</th><th>Cost</th><th>Avg TPS</th><th>Requests</th></tr></thead>
+        <tbody id="timeseries"></tbody>
+      </table>
+    </section>
+
+    <p class="footer">
+      Endpoints: <a href="/v1/dashboard/summary">/v1/dashboard/summary</a>,
+      <a href="/v1/dashboard/models">/v1/dashboard/models</a>,
+      <a href="/v1/dashboard/projects">/v1/dashboard/projects</a>,
+      <a href="/v1/dashboard/providers">/v1/dashboard/providers</a>,
+      <a href="/v1/dashboard/timeseries">/v1/dashboard/timeseries</a>,
+      <a id="exportCsvLink" href="/v1/dashboard/export.csv">/v1/dashboard/export.csv</a>,
+      <a id="exportJsonLink" href="/v1/dashboard/export.json">/v1/dashboard/export.json</a>
+    </p>
+  </main>
+
+  <script>
+    const state = { from: "", to: "", providerId: "", modelId: "", anonProjectId: "" };
+    const intFmt = n => Number(n ?? 0).toLocaleString();
+    const costFmt = n => "$" + Number(n ?? 0).toFixed(4);
+    const numFmt = n => (n === null || n === undefined ? "N/A" : Number(n).toFixed(2));
+    const tsFmt = ts => {
+      const d = new Date(Number(ts) * 1000);
+      return Number.isNaN(d.getTime()) ? "-" : d.toLocaleString();
+    };
+
+    function query(extra) {
+      const params = new URLSearchParams();
+      if (state.from) params.set("from", state.from);
+      if (state.to) params.set("to", state.to);
+      if (state.providerId) params.set("providerId", state.providerId);
+      if (state.modelId) params.set("modelId", state.modelId);
+      if (state.anonProjectId) params.set("anonProjectId", state.anonProjectId);
+      if (extra) {
+        for (const [key, value] of Object.entries(extra)) {
+          if (value !== undefined && value !== null && value !== "") params.set(key, String(value));
+        }
+      }
+      const q = params.toString();
+      return q ? "?" + q : "";
+    }
+
+    function refreshExportLink() {
+      const csvLink = document.getElementById("exportCsvLink");
+      const jsonLink = document.getElementById("exportJsonLink");
+      csvLink.setAttribute("href", "/v1/dashboard/export.csv" + query());
+      jsonLink.setAttribute("href", "/v1/dashboard/export.json" + query());
+    }
+
+    async function getJson(path, extra) {
+      const response = await fetch(path + query(extra));
+      if (!response.ok) throw new Error("HTTP " + response.status);
+      return response.json();
+    }
+
+    function row(cells) {
+      const tr = document.createElement("tr");
+      for (const value of cells) {
+        const td = document.createElement("td");
+        td.textContent = String(value);
+        tr.appendChild(td);
+      }
+      return tr;
+    }
+
+    function setRows(id, rows, mapRow, emptyCols) {
+      const tbody = document.getElementById(id);
+      tbody.innerHTML = "";
+      if (!rows.length) {
+        const empty = ["No data"];
+        for (let i = 1; i < emptyCols; i += 1) empty.push("");
+        tbody.appendChild(row(empty));
+        return;
+      }
+      for (const item of rows) {
+        tbody.appendChild(row(mapRow(item)));
+      }
+    }
+
+    async function load() {
+      try {
+        const [summary, models, providers, projects, tokensSeries, costSeries, tpsSeries] = await Promise.all([
+          getJson("/v1/dashboard/summary"),
+          getJson("/v1/dashboard/models", { limit: 30 }),
+          getJson("/v1/dashboard/providers", { limit: 30 }),
+          getJson("/v1/dashboard/projects", { limit: 30 }),
+          getJson("/v1/dashboard/timeseries", { metric: "tokens", groupBy: "hour", limit: 48 }),
+          getJson("/v1/dashboard/timeseries", { metric: "cost", groupBy: "hour", limit: 48 }),
+          getJson("/v1/dashboard/timeseries", { metric: "tps", groupBy: "hour", limit: 48 })
+        ]);
+
+        document.getElementById("requests").textContent = intFmt(summary.requestCount);
+        document.getElementById("input").textContent = intFmt(summary.totalInputTokens);
+        document.getElementById("output").textContent = intFmt(summary.totalOutputTokens);
+        document.getElementById("reasoning").textContent = intFmt(summary.totalReasoningTokens);
+        document.getElementById("cacheRead").textContent = intFmt(summary.totalCacheReadTokens);
+        document.getElementById("cost").textContent = costFmt(summary.totalCost);
+
+        setRows("models", models, item => [
+          item.providerId,
+          item.modelId,
+          intFmt(item.requestCount),
+          costFmt(item.totalCost),
+          numFmt(item.avgOutputTps)
+        ], 5);
+
+        setRows("projects", projects, item => [
+          item.anonProjectId,
+          intFmt(item.requestCount),
+          intFmt(item.totalInputTokens),
+          intFmt(item.totalOutputTokens),
+          costFmt(item.totalCost)
+        ], 5);
+
+        setRows("providers", providers, item => [
+          item.providerId,
+          intFmt(item.requestCount),
+          intFmt(item.totalInputTokens),
+          intFmt(item.totalOutputTokens),
+          costFmt(item.totalCost)
+        ], 5);
+
+        const byTs = new Map();
+        for (const point of tokensSeries) byTs.set(point.ts, { ts: point.ts, tokens: point.value, cost: 0, tps: 0, requestCount: point.requestCount });
+        for (const point of costSeries) {
+          const current = byTs.get(point.ts) || { ts: point.ts, tokens: 0, cost: 0, tps: 0, requestCount: point.requestCount };
+          current.cost = point.value;
+          byTs.set(point.ts, current);
+        }
+        for (const point of tpsSeries) {
+          const current = byTs.get(point.ts) || { ts: point.ts, tokens: 0, cost: 0, tps: 0, requestCount: point.requestCount };
+          current.tps = point.value;
+          byTs.set(point.ts, current);
+        }
+
+        const mergedSeries = [...byTs.values()].sort((a, b) => a.ts - b.ts).slice(-24);
+        setRows("timeseries", mergedSeries, item => [
+          tsFmt(item.ts),
+          intFmt(item.tokens),
+          costFmt(item.cost),
+          numFmt(item.tps),
+          intFmt(item.requestCount)
+        ], 5);
+
+        document.getElementById("updated").textContent = "Updated: " + new Date().toLocaleTimeString();
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        document.getElementById("updated").textContent = "Load failed: " + msg;
+      }
+    }
+
+    document.getElementById("apply").addEventListener("click", () => {
+      const from = document.getElementById("from").value.trim();
+      const to = document.getElementById("to").value.trim();
+      const provider = document.getElementById("provider").value.trim();
+      const model = document.getElementById("model").value.trim();
+      const anonProject = document.getElementById("anonProject").value.trim();
+      state.from = from;
+      state.to = to;
+      state.providerId = provider;
+      state.modelId = model;
+      state.anonProjectId = anonProject;
+      refreshExportLink();
+      load();
+    });
+
+    document.getElementById("last24h").addEventListener("click", () => {
+      const now = Math.floor(Date.now() / 1000);
+      state.from = String(now - 86400);
+      state.to = String(now);
+      document.getElementById("from").value = state.from;
+      document.getElementById("to").value = state.to;
+      load();
+    });
+
+    document.getElementById("clear").addEventListener("click", () => {
+      state.from = "";
+      state.to = "";
+      state.providerId = "";
+      state.modelId = "";
+      state.anonProjectId = "";
+      document.getElementById("from").value = "";
+      document.getElementById("to").value = "";
+      document.getElementById("provider").value = "";
+      document.getElementById("model").value = "";
+      document.getElementById("anonProject").value = "";
+      refreshExportLink();
+      load();
+    });
+
+    refreshExportLink();
+    load();
+    setInterval(load, 10000);
+  </script>
+</body>
+</html>`;
+}
+function hubAdminHtml() {
+    return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TokenSpeed Hub Admin</title>
+  <style>
+    :root {
+      --bg: #f0f4fb;
+      --panel: #ffffff;
+      --ink: #0f1a2b;
+      --muted: #5b6778;
+      --line: #d7dfeb;
+      --brand: #1268ff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+    }
+    main {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 24px;
+      display: grid;
+      gap: 12px;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px;
+    }
+    h1 { margin: 0 0 8px 0; font-size: 1.4rem; }
+    .muted { margin: 0; color: var(--muted); }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+    }
+    @media (min-width: 900px) {
+      .grid { grid-template-columns: 1fr 1fr; }
+    }
+    label {
+      display: grid;
+      gap: 4px;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+    input, button {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 7px 10px;
+      background: #fff;
+      color: var(--ink);
+      font-size: 0.9rem;
+    }
+    button {
+      cursor: pointer;
+      background: #f7faff;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+      font-size: 0.9rem;
+    }
+    th, td {
+      text-align: left;
+      border-bottom: 1px solid var(--line);
+      padding: 7px 8px;
+      vertical-align: top;
+    }
+    th { font-size: 0.76rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; }
+    pre {
+      margin: 0;
+      background: #f7f9fd;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 8px;
+      overflow: auto;
+      max-height: 260px;
+      font-size: 0.8rem;
+    }
+    a { color: var(--brand); text-decoration: none; }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="panel">
+      <h1>TokenSpeed Hub Admin</h1>
+      <p class="muted">Manage devices using invite and admin tokens.</p>
+    </section>
+
+    <section class="panel grid">
+      <label>Admin token
+        <input id="adminToken" type="password" placeholder="required for list/revoke">
+      </label>
+      <label>Invite token
+        <input id="inviteToken" type="password" placeholder="required for register">
+      </label>
+      <label>Device ID
+        <input id="deviceId" type="text" placeholder="optional for register, required for revoke">
+      </label>
+      <label>Label
+        <input id="label" type="text" placeholder="optional for register">
+      </label>
+      <label>Bulk device IDs (comma or newline)
+        <input id="deviceIds" type="text" placeholder="dev_a,dev_b,dev_c">
+      </label>
+    </section>
+
+    <section class="panel">
+      <button id="registerBtn" type="button">Register Device</button>
+      <button id="listBtn" type="button">List Devices</button>
+      <button id="revokeBtn" type="button">Revoke Device</button>
+      <button id="activateBtn" type="button">Activate Device</button>
+      <button id="bulkRevokeBtn" type="button">Bulk Revoke</button>
+      <button id="bulkActivateBtn" type="button">Bulk Activate</button>
+      <button id="logoutBtn" type="button">Logout</button>
+    </section>
+
+    <section class="panel">
+      <strong>Devices</strong>
+      <table>
+        <thead>
+          <tr>
+            <th>Device</th><th>Label</th><th>Status</th><th>Last Seen</th><th>Updated</th>
+          </tr>
+        </thead>
+        <tbody id="devices"></tbody>
+      </table>
+    </section>
+
+    <section class="panel">
+      <strong>Response</strong>
+      <pre id="output">Ready.</pre>
+    </section>
+
+    <section class="panel">
+      <a href="/">Back to dashboard</a>
+    </section>
+  </main>
+
+  <script>
+    function byId(id) { return document.getElementById(id); }
+    function fmtTs(ts) {
+      if (!ts) return "-";
+      const d = new Date(Number(ts) * 1000);
+      return Number.isNaN(d.getTime()) ? "-" : d.toLocaleString();
+    }
+    function showJson(value) {
+      byId("output").textContent = JSON.stringify(value, null, 2);
+    }
+    function row(cells) {
+      const tr = document.createElement("tr");
+      for (const value of cells) {
+        const td = document.createElement("td");
+        td.textContent = String(value);
+        tr.appendChild(td);
+      }
+      return tr;
+    }
+    function setDeviceRows(devices) {
+      const tbody = byId("devices");
+      tbody.innerHTML = "";
+      if (!devices.length) {
+        tbody.appendChild(row(["No devices", "", "", "", ""]));
+        return;
+      }
+      for (const device of devices) {
+        tbody.appendChild(row([
+          device.deviceId,
+          device.label || "",
+          device.status,
+          fmtTs(device.lastSeen),
+          fmtTs(device.updatedAt),
+        ]));
+      }
+    }
+    function parseBulkIds(value) {
+      return value
+        .split(/[\n,]+/)
+        .map(item => item.trim())
+        .filter(Boolean);
+    }
+    async function listDevices() {
+      const adminToken = byId("adminToken").value.trim();
+      const response = await fetch("/v1/devices?limit=200", {
+        headers: {
+          "X-TS-Admin-Token": adminToken,
+        },
+      });
+      const text = await response.text();
+      let body = text;
+      try { body = JSON.parse(text); } catch {}
+      if (!response.ok) {
+        showJson({ status: response.status, error: body });
+        return;
+      }
+      showJson(body);
+      setDeviceRows(Array.isArray(body) ? body : []);
+    }
+    byId("listBtn").addEventListener("click", async () => {
+      try {
+        await listDevices();
+      } catch (error) {
+        showJson({ error: String(error) });
+      }
+    });
+    byId("registerBtn").addEventListener("click", async () => {
+      const inviteToken = byId("inviteToken").value.trim();
+      const deviceId = byId("deviceId").value.trim();
+      const label = byId("label").value.trim();
+      try {
+        const response = await fetch("/v1/devices/register", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            inviteToken: inviteToken,
+            deviceId: deviceId || undefined,
+            label: label || undefined,
+          }),
+        });
+        const text = await response.text();
+        let body = text;
+        try { body = JSON.parse(text); } catch {}
+        showJson({ status: response.status, body: body });
+        if (response.ok) await listDevices();
+      } catch (error) {
+        showJson({ error: String(error) });
+      }
+    });
+    byId("revokeBtn").addEventListener("click", async () => {
+      const adminToken = byId("adminToken").value.trim();
+      const deviceId = byId("deviceId").value.trim();
+      try {
+        const response = await fetch("/v1/devices/revoke", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-TS-Admin-Token": adminToken,
+          },
+          body: JSON.stringify({ deviceId: deviceId }),
+        });
+        const text = await response.text();
+        let body = text;
+        try { body = JSON.parse(text); } catch {}
+        showJson({ status: response.status, body: body });
+        if (response.ok) await listDevices();
+      } catch (error) {
+        showJson({ error: String(error) });
+      }
+    });
+    byId("activateBtn").addEventListener("click", async () => {
+      const adminToken = byId("adminToken").value.trim();
+      const deviceId = byId("deviceId").value.trim();
+      try {
+        const response = await fetch("/v1/devices/activate", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-TS-Admin-Token": adminToken,
+          },
+          body: JSON.stringify({ deviceId: deviceId }),
+        });
+        const text = await response.text();
+        let body = text;
+        try { body = JSON.parse(text); } catch {}
+        showJson({ status: response.status, body: body });
+        if (response.ok) await listDevices();
+      } catch (error) {
+        showJson({ error: String(error) });
+      }
+    });
+    async function callBulk(action) {
+      const adminToken = byId("adminToken").value.trim();
+      const deviceIds = parseBulkIds(byId("deviceIds").value.trim());
+      if (!deviceIds.length) {
+        showJson({ error: "Provide at least one device ID for bulk action." });
+        return;
+      }
+      const response = await fetch("/v1/devices/bulk", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-TS-Admin-Token": adminToken,
+        },
+        body: JSON.stringify({ action, deviceIds }),
+      });
+      const text = await response.text();
+      let body = text;
+      try { body = JSON.parse(text); } catch {}
+      showJson({ status: response.status, body: body });
+      if (response.ok) await listDevices();
+    }
+    byId("bulkRevokeBtn").addEventListener("click", async () => {
+      try {
+        await callBulk("revoke");
+      } catch (error) {
+        showJson({ error: String(error) });
+      }
+    });
+    byId("bulkActivateBtn").addEventListener("click", async () => {
+      try {
+        await callBulk("activate");
+      } catch (error) {
+        showJson({ error: String(error) });
+      }
+    });
+    byId("logoutBtn").addEventListener("click", async () => {
+      try {
+        await fetch("/admin/logout", { method: "POST" });
+      } finally {
+        window.location.href = "/admin";
+      }
+    });
+  </script>
+</body>
+</html>`;
+}
+function hubAdminLoginHtml(errorMessage) {
+    const message = errorMessage ? `<p class="error">${errorMessage}</p>` : "";
+    return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TokenSpeed Hub Admin Login</title>
+  <style>
+    :root {
+      --bg: #f0f4fb;
+      --panel: #ffffff;
+      --ink: #0f1a2b;
+      --muted: #5b6778;
+      --line: #d7dfeb;
+      --danger: #b42318;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: radial-gradient(circle at 15% 15%, #ffffff, var(--bg));
+      color: var(--ink);
+    }
+    main {
+      width: min(440px, 92vw);
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 20px;
+      display: grid;
+      gap: 12px;
+    }
+    h1 { margin: 0; font-size: 1.2rem; }
+    p { margin: 0; color: var(--muted); }
+    .error {
+      color: var(--danger);
+      background: #fff2f0;
+      border: 1px solid #ffd0ca;
+      border-radius: 8px;
+      padding: 8px 10px;
+    }
+    label {
+      display: grid;
+      gap: 6px;
+      font-size: 0.82rem;
+      color: var(--muted);
+    }
+    input, button {
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      padding: 9px 11px;
+      font-size: 0.93rem;
+      color: var(--ink);
+      background: #fff;
+    }
+    button {
+      cursor: pointer;
+      font-weight: 600;
+      background: #eef4ff;
+    }
+    code {
+      font-size: 0.82rem;
+      background: #f5f7fc;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 2px 6px;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>TokenSpeed Hub Admin</h1>
+    <p>Admin access requires <code>TS_HUB_ADMIN_TOKEN</code>. Enter the token to continue.</p>
+    ${message}
+    <form method="post" action="/admin/login">
+      <label>Admin token
+        <input name="adminToken" type="password" autocomplete="current-password" required>
+      </label>
+      <button type="submit">Open Admin</button>
+    </form>
+  </main>
+</body>
+</html>`;
+}
+function isValidBucket(input) {
+    if (typeof input !== "object" || input === null)
+        return false;
+    const candidate = input;
+    const requiredNumber = [
+        "bucketStart",
+        "bucketEnd",
+        "requestCount",
+        "inputTokens",
+        "outputTokens",
+        "reasoningTokens",
+        "cacheReadTokens",
+        "cacheWriteTokens",
+        "totalCost",
+    ];
+    for (const key of requiredNumber) {
+        if (typeof candidate[key] !== "number" || !Number.isFinite(candidate[key]))
+            return false;
+    }
+    const requiredString = ["anonProjectId", "providerId", "modelId"];
+    for (const key of requiredString) {
+        if (typeof candidate[key] !== "string" || candidate[key].trim().length === 0)
+            return false;
+    }
+    if (candidate.avgOutputTps !== null && candidate.avgOutputTps !== undefined && typeof candidate.avgOutputTps !== "number") {
+        return false;
+    }
+    if (candidate.minOutputTps !== null && candidate.minOutputTps !== undefined && typeof candidate.minOutputTps !== "number") {
+        return false;
+    }
+    if (candidate.maxOutputTps !== null && candidate.maxOutputTps !== undefined && typeof candidate.maxOutputTps !== "number") {
+        return false;
+    }
+    return true;
+}
+function isValidIngestPayload(input) {
+    if (typeof input !== "object" || input === null)
+        return false;
+    const candidate = input;
+    if (typeof candidate.schemaVersion !== "number")
+        return false;
+    if (typeof candidate.deviceId !== "string" || candidate.deviceId.trim().length === 0)
+        return false;
+    if (!Array.isArray(candidate.buckets))
+        return false;
+    return candidate.buckets.every(isValidBucket);
+}
+function signatureFor(payload, timestamp, nonce, signingKey) {
+    return createHmac("sha256", signingKey).update(`${timestamp}.${nonce}.${payload}`).digest("hex");
+}
+function secureEqualHex(a, b) {
+    if (a.length !== b.length)
+        return false;
+    let diff = 0;
+    for (let i = 0; i < a.length; i += 1) {
+        diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+    }
+    return diff === 0;
+}
+async function parseSignedBody(req) {
+    let rawBody = "";
+    try {
+        rawBody = await req.text();
+    }
+    catch {
+        return err(400, "Unable to read request body");
+    }
+    let body;
+    try {
+        body = JSON.parse(rawBody);
+    }
+    catch {
+        return err(400, "Invalid JSON body");
+    }
+    if (!isValidIngestPayload(body)) {
+        return err(400, "Invalid ingest payload schema");
+    }
+    return { raw: rawBody, payload: body };
+}
+async function parseJsonBody(req) {
+    try {
+        return await req.json();
+    }
+    catch {
+        return err(400, "Invalid JSON body");
+    }
+}
+function isRegisterPayload(input) {
+    if (typeof input !== "object" || input === null)
+        return false;
+    const candidate = input;
+    if (typeof candidate.inviteToken !== "string" || candidate.inviteToken.trim().length === 0)
+        return false;
+    if (candidate.deviceId !== undefined && typeof candidate.deviceId !== "string")
+        return false;
+    if (candidate.label !== undefined && typeof candidate.label !== "string")
+        return false;
+    return true;
+}
+function isRevokePayload(input) {
+    if (typeof input !== "object" || input === null)
+        return false;
+    const candidate = input;
+    return typeof candidate.deviceId === "string" && candidate.deviceId.trim().length > 0;
+}
+function isBulkDevicePayload(input) {
+    if (typeof input !== "object" || input === null)
+        return false;
+    const candidate = input;
+    if (candidate.action !== "revoke" && candidate.action !== "activate")
+        return false;
+    if (!Array.isArray(candidate.deviceIds))
+        return false;
+    return candidate.deviceIds.every(item => typeof item === "string");
+}
+function randomDeviceId() {
+    return `dev_${randomUUID().replace(/-/g, "").slice(0, 20)}`;
+}
+function readAdminToken(req) {
+    const fromHeader = req.headers.get("X-TS-Admin-Token")?.trim();
+    if (fromHeader)
+        return fromHeader;
+    const auth = req.headers.get("Authorization")?.trim();
+    if (auth?.toLowerCase().startsWith("bearer ")) {
+        return auth.slice(7).trim();
+    }
+    const cookieHeader = req.headers.get("Cookie") ?? "";
+    const cookies = cookieHeader.split(";");
+    for (const entry of cookies) {
+        const part = entry.trim();
+        if (!part)
+            continue;
+        const idx = part.indexOf("=");
+        if (idx <= 0)
+            continue;
+        const key = part.slice(0, idx).trim();
+        if (key !== "ts_hub_admin_token")
+            continue;
+        const raw = part.slice(idx + 1).trim();
+        if (!raw)
+            continue;
+        try {
+            const decoded = decodeURIComponent(raw);
+            if (decoded)
+                return decoded;
+        }
+        catch {
+            return raw;
+        }
+    }
+    return "";
+}
+function clientAddress(req) {
+    const forwarded = req.headers.get("X-Forwarded-For")?.split(",")[0]?.trim();
+    if (forwarded)
+        return forwarded;
+    const realIp = req.headers.get("CF-Connecting-IP")?.trim();
+    if (realIp)
+        return realIp;
+    return "unknown";
+}
+function isSecureRequest(req) {
+    const forwardedProto = req.headers.get("X-Forwarded-Proto")?.split(",")[0]?.trim().toLowerCase();
+    if (forwardedProto === "https")
+        return true;
+    try {
+        const url = new URL(req.url);
+        return url.protocol === "https:";
+    }
+    catch {
+        return false;
+    }
+}
+function adminTokenCookie(token, secure) {
+    const secureFlag = secure ? "; Secure" : "";
+    return `ts_hub_admin_token=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Strict; Max-Age=86400${secureFlag}`;
+}
+function clearAdminTokenCookie(secure) {
+    const secureFlag = secure ? "; Secure" : "";
+    return `ts_hub_admin_token=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0${secureFlag}`;
+}
+function auditLog(action, fields) {
+    const payload = {
+        ...fields,
+        action,
+        at: Math.floor(Date.now() / 1000),
+    };
+    console.info(`[tokenspeed-hub] ${JSON.stringify(payload)}`);
+}
+export function startHubServer(requestedPort, options = {}) {
+    const db = options.db ?? openHubDatabase();
+    const signingKey = options.signingKey ?? process.env.TS_HUB_SIGNING_KEY?.trim() ?? "";
+    const inviteToken = options.inviteToken ?? process.env.TS_HUB_INVITE_TOKEN?.trim() ?? "";
+    const adminToken = options.adminToken ?? process.env.TS_HUB_ADMIN_TOKEN?.trim() ?? "";
+    const adminLoginWindowSeconds = options.adminLoginWindowSeconds ??
+        parsePositiveInt(process.env.TS_HUB_ADMIN_LOGIN_WINDOW_SEC, DEFAULT_ADMIN_LOGIN_WINDOW_SECONDS, 10, 3600);
+    const adminLoginMaxAttempts = options.adminLoginMaxAttempts ??
+        parsePositiveInt(process.env.TS_HUB_ADMIN_LOGIN_MAX_ATTEMPTS, DEFAULT_ADMIN_LOGIN_MAX_ATTEMPTS, 1, 100);
+    const allowedDevices = options.allowedDevices ?? null;
+    const enforceRegisteredDevices = inviteToken.length > 0;
+    const adminLoginAttempts = new Map();
+    if (!signingKey && !inviteToken) {
+        throw new Error("TS_HUB_SIGNING_KEY or TS_HUB_INVITE_TOKEN is required");
+    }
+    const serve = (port) => Bun.serve({
+        port,
+        routes: {
+            "/": req => {
+                if (req.method === "OPTIONS")
+                    return preflight();
+                if (req.method !== "GET")
+                    return err(405, "Method Not Allowed");
+                return withCors(new Response(hubDashboardHtml(), {
+                    headers: {
+                        "Content-Type": "text/html; charset=utf-8",
+                        "Cache-Control": "no-store",
+                    },
+                }));
+            },
+            "/dashboard": req => {
+                if (req.method === "OPTIONS")
+                    return preflight();
+                if (req.method !== "GET")
+                    return err(405, "Method Not Allowed");
+                return withCors(new Response(hubDashboardHtml(), {
+                    headers: {
+                        "Content-Type": "text/html; charset=utf-8",
+                        "Cache-Control": "no-store",
+                    },
+                }));
+            },
+            "/admin": req => {
+                if (req.method === "OPTIONS")
+                    return preflight();
+                if (req.method !== "GET")
+                    return err(405, "Method Not Allowed");
+                if (!adminToken)
+                    return err(503, "Admin token is not configured on hub");
+                const supplied = readAdminToken(req);
+                if (!supplied || supplied !== adminToken) {
+                    return withCors(new Response(hubAdminLoginHtml(), {
+                        status: 401,
+                        headers: {
+                            "Content-Type": "text/html; charset=utf-8",
+                            "Cache-Control": "no-store",
+                        },
+                    }));
+                }
+                return withCors(new Response(hubAdminHtml(), {
+                    headers: {
+                        "Content-Type": "text/html; charset=utf-8",
+                        "Cache-Control": "no-store",
+                    },
+                }));
+            },
+            "/admin/login": async (req) => {
+                if (req.method === "OPTIONS")
+                    return preflight();
+                if (req.method !== "POST")
+                    return err(405, "Method Not Allowed");
+                if (!adminToken)
+                    return err(503, "Admin token is not configured on hub");
+                const now = Math.floor(Date.now() / 1000);
+                const source = clientAddress(req);
+                const rateEntry = adminLoginAttempts.get(source);
+                if (rateEntry && rateEntry.resetAt > now && rateEntry.count >= adminLoginMaxAttempts) {
+                    auditLog("admin_login_rate_limited", {
+                        source,
+                        attempts: rateEntry.count,
+                        windowSeconds: adminLoginWindowSeconds,
+                    });
+                    return withCors(new Response(hubAdminLoginHtml("Too many login attempts. Try again later."), {
+                        status: 429,
+                        headers: {
+                            "Content-Type": "text/html; charset=utf-8",
+                            "Cache-Control": "no-store",
+                        },
+                    }));
+                }
+                let bodyRaw = "";
+                try {
+                    bodyRaw = await req.text();
+                }
+                catch {
+                    return err(400, "Unable to read request body");
+                }
+                const params = new URLSearchParams(bodyRaw);
+                const supplied = params.get("adminToken")?.trim() ?? "";
+                if (!supplied || supplied !== adminToken) {
+                    const nextCount = rateEntry && rateEntry.resetAt > now ? rateEntry.count + 1 : 1;
+                    adminLoginAttempts.set(source, {
+                        count: nextCount,
+                        resetAt: now + adminLoginWindowSeconds,
+                    });
+                    auditLog("admin_login_failed", {
+                        source,
+                        attempts: nextCount,
+                        windowSeconds: adminLoginWindowSeconds,
+                    });
+                    return withCors(new Response(hubAdminLoginHtml("Invalid admin token"), {
+                        status: 403,
+                        headers: {
+                            "Content-Type": "text/html; charset=utf-8",
+                            "Cache-Control": "no-store",
+                        },
+                    }));
+                }
+                adminLoginAttempts.delete(source);
+                auditLog("admin_login_success", {
+                    source,
+                });
+                return withCors(new Response(null, {
+                    status: 303,
+                    headers: {
+                        Location: "/admin",
+                        "Set-Cookie": adminTokenCookie(supplied, isSecureRequest(req)),
+                        "Cache-Control": "no-store",
+                    },
+                }));
+            },
+            "/admin/logout": req => {
+                if (req.method === "OPTIONS")
+                    return preflight();
+                if (req.method !== "POST")
+                    return err(405, "Method Not Allowed");
+                auditLog("admin_logout", {
+                    source: clientAddress(req),
+                });
+                return withCors(new Response(null, {
+                    status: 303,
+                    headers: {
+                        Location: "/admin",
+                        "Set-Cookie": clearAdminTokenCookie(isSecureRequest(req)),
+                        "Cache-Control": "no-store",
+                    },
+                }));
+            },
+            "/v1/health": req => {
+                if (req.method === "OPTIONS")
+                    return preflight();
+                if (req.method !== "GET")
+                    return err(405, "Method Not Allowed");
+                return json({
+                    ok: true,
+                    now: Math.floor(Date.now() / 1000),
+                    service: "tokenspeed-hub",
+                });
+            },
+            "/v1/ingest/buckets": async (req) => {
+                if (req.method === "OPTIONS")
+                    return preflight();
+                if (req.method !== "POST")
+                    return err(405, "Method Not Allowed");
+                const headerDevice = req.headers.get("X-TS-Device-ID")?.trim() ?? "";
+                const timestamp = req.headers.get("X-TS-Timestamp")?.trim() ?? "";
+                const nonce = req.headers.get("X-TS-Nonce")?.trim() ?? "";
+                const signature = req.headers.get("X-TS-Signature")?.trim() ?? "";
+                if (!headerDevice || !timestamp || !nonce || !signature) {
+                    return err(401, "Missing auth headers");
+                }
+                if (allowedDevices && !allowedDevices.has(headerDevice)) {
+                    return err(403, "Device not allowed");
+                }
+                const deviceRecord = getHubDevice(db, headerDevice);
+                if (enforceRegisteredDevices && !deviceRecord) {
+                    return err(403, "Device not registered");
+                }
+                if (deviceRecord && deviceRecord.status !== "active") {
+                    return err(403, "Device revoked");
+                }
+                const parsedTimestamp = Number(timestamp);
+                if (!Number.isFinite(parsedTimestamp))
+                    return err(401, "Invalid timestamp");
+                const now = Math.floor(Date.now() / 1000);
+                if (Math.abs(now - parsedTimestamp) > TIMESTAMP_WINDOW_SECONDS) {
+                    return err(401, "Timestamp outside allowed window");
+                }
+                cleanupExpiredNonces(db, now);
+                if (isNonceUsed(db, headerDevice, nonce)) {
+                    return err(401, "Nonce already used");
+                }
+                const parsed = await parseSignedBody(req);
+                if (parsed instanceof Response)
+                    return parsed;
+                if (parsed.payload.deviceId !== headerDevice) {
+                    return err(401, "Device ID mismatch");
+                }
+                const expected = signatureFor(parsed.raw, timestamp, nonce, deviceRecord?.signingKey ?? signingKey);
+                if (!secureEqualHex(expected, signature)) {
+                    return err(401, "Invalid signature");
+                }
+                storeNonce(db, headerDevice, nonce, now + TIMESTAMP_WINDOW_SECONDS * 2);
+                upsertHubBuckets(db, headerDevice, parsed.payload.buckets);
+                touchHubDeviceSeen(db, headerDevice, now);
+                return json({
+                    accepted: parsed.payload.buckets.length,
+                    duplicates: 0,
+                    rejected: 0,
+                    serverTime: now,
+                });
+            },
+            "/v1/devices/register": async (req) => {
+                if (req.method === "OPTIONS")
+                    return preflight();
+                if (req.method !== "POST")
+                    return err(405, "Method Not Allowed");
+                if (!inviteToken)
+                    return err(503, "Invite token is not configured on hub");
+                const parsedBody = await parseJsonBody(req);
+                if (parsedBody instanceof Response)
+                    return parsedBody;
+                if (!isRegisterPayload(parsedBody))
+                    return err(400, "Invalid register payload");
+                if (parsedBody.inviteToken !== inviteToken)
+                    return err(403, "Invalid invite token");
+                const deviceId = parsedBody.deviceId?.trim() || randomDeviceId();
+                const label = parsedBody.label?.trim() || null;
+                const device = registerHubDevice(db, deviceId, label);
+                return json({
+                    deviceId: device.deviceId,
+                    signingKey: device.signingKey,
+                    status: device.status,
+                });
+            },
+            "/v1/devices": req => {
+                if (req.method === "OPTIONS")
+                    return preflight();
+                if (req.method !== "GET")
+                    return err(405, "Method Not Allowed");
+                if (!adminToken)
+                    return err(503, "Admin token is not configured on hub");
+                const supplied = readAdminToken(req);
+                if (!supplied || supplied !== adminToken)
+                    return err(403, "Invalid admin token");
+                const url = new URL(req.url);
+                const { limit } = parseRange(url);
+                return json(listHubDevices(db, limit).map(device => ({
+                    deviceId: device.deviceId,
+                    label: device.label,
+                    status: device.status,
+                    createdAt: device.createdAt,
+                    updatedAt: device.updatedAt,
+                    lastSeen: device.lastSeen,
+                    revokedAt: device.revokedAt,
+                })));
+            },
+            "/v1/devices/revoke": async (req) => {
+                if (req.method === "OPTIONS")
+                    return preflight();
+                if (req.method !== "POST")
+                    return err(405, "Method Not Allowed");
+                if (!adminToken)
+                    return err(503, "Admin token is not configured on hub");
+                const supplied = readAdminToken(req);
+                if (!supplied || supplied !== adminToken)
+                    return err(403, "Invalid admin token");
+                const parsedBody = await parseJsonBody(req);
+                if (parsedBody instanceof Response)
+                    return parsedBody;
+                if (!isRevokePayload(parsedBody))
+                    return err(400, "Invalid revoke payload");
+                const deviceId = parsedBody.deviceId.trim();
+                const ok = revokeHubDevice(db, deviceId);
+                if (!ok)
+                    return err(404, "Device not found");
+                auditLog("device_revoke", {
+                    source: clientAddress(req),
+                    deviceId,
+                });
+                return json({ ok: true, deviceId });
+            },
+            "/v1/devices/activate": async (req) => {
+                if (req.method === "OPTIONS")
+                    return preflight();
+                if (req.method !== "POST")
+                    return err(405, "Method Not Allowed");
+                if (!adminToken)
+                    return err(503, "Admin token is not configured on hub");
+                const supplied = readAdminToken(req);
+                if (!supplied || supplied !== adminToken)
+                    return err(403, "Invalid admin token");
+                const parsedBody = await parseJsonBody(req);
+                if (parsedBody instanceof Response)
+                    return parsedBody;
+                if (!isRevokePayload(parsedBody))
+                    return err(400, "Invalid activate payload");
+                const deviceId = parsedBody.deviceId.trim();
+                const ok = activateHubDevice(db, deviceId);
+                if (!ok)
+                    return err(404, "Device not found");
+                auditLog("device_activate", {
+                    source: clientAddress(req),
+                    deviceId,
+                });
+                return json({ ok: true, deviceId });
+            },
+            "/v1/devices/bulk": async (req) => {
+                if (req.method === "OPTIONS")
+                    return preflight();
+                if (req.method !== "POST")
+                    return err(405, "Method Not Allowed");
+                if (!adminToken)
+                    return err(503, "Admin token is not configured on hub");
+                const supplied = readAdminToken(req);
+                if (!supplied || supplied !== adminToken)
+                    return err(403, "Invalid admin token");
+                const parsedBody = await parseJsonBody(req);
+                if (parsedBody instanceof Response)
+                    return parsedBody;
+                if (!isBulkDevicePayload(parsedBody))
+                    return err(400, "Invalid bulk payload");
+                const result = bulkSetHubDevicesStatus(db, parsedBody.deviceIds, parsedBody.action === "revoke" ? "revoked" : "active");
+                auditLog("device_bulk_status", {
+                    source: clientAddress(req),
+                    action: parsedBody.action,
+                    requested: parsedBody.deviceIds.length,
+                    updated: result.updated.length,
+                    missing: result.missing.length,
+                });
+                return json({
+                    ok: true,
+                    action: parsedBody.action,
+                    updated: result.updated,
+                    missing: result.missing,
+                });
+            },
+            "/v1/dashboard/summary": req => {
+                if (req.method === "OPTIONS")
+                    return preflight();
+                if (req.method !== "GET")
+                    return err(405, "Method Not Allowed");
+                const url = new URL(req.url);
+                const range = parseRange(url);
+                const filters = parseDashboardFilters(url);
+                return json(getHubSummary(db, range.from, range.to, filters));
+            },
+            "/v1/dashboard/models": req => {
+                if (req.method === "OPTIONS")
+                    return preflight();
+                if (req.method !== "GET")
+                    return err(405, "Method Not Allowed");
+                const url = new URL(req.url);
+                const range = parseRange(url);
+                const filters = parseDashboardFilters(url);
+                return json(getHubModels(db, range.from, range.to, range.limit, filters));
+            },
+            "/v1/dashboard/providers": req => {
+                if (req.method === "OPTIONS")
+                    return preflight();
+                if (req.method !== "GET")
+                    return err(405, "Method Not Allowed");
+                const url = new URL(req.url);
+                const range = parseRange(url);
+                const filters = parseDashboardFilters(url);
+                return json(getHubProviders(db, range.from, range.to, range.limit, filters));
+            },
+            "/v1/dashboard/projects": req => {
+                if (req.method === "OPTIONS")
+                    return preflight();
+                if (req.method !== "GET")
+                    return err(405, "Method Not Allowed");
+                const url = new URL(req.url);
+                const range = parseRange(url);
+                const filters = parseDashboardFilters(url);
+                return json(getHubProjects(db, range.from, range.to, range.limit, filters));
+            },
+            "/v1/dashboard/timeseries": req => {
+                if (req.method === "OPTIONS")
+                    return preflight();
+                if (req.method !== "GET")
+                    return err(405, "Method Not Allowed");
+                const url = new URL(req.url);
+                const range = parseRange(url);
+                const metric = parseMetric(url);
+                const groupBy = parseGroupBy(url);
+                const filters = parseDashboardFilters(url);
+                return json(getHubTimeseries(db, metric, groupBy, range.from, range.to, range.limit, filters));
+            },
+            "/v1/dashboard/export.csv": req => {
+                if (req.method === "OPTIONS")
+                    return preflight();
+                if (req.method !== "GET")
+                    return err(405, "Method Not Allowed");
+                const url = new URL(req.url);
+                const csv = buildDashboardExportCsv(db, url);
+                return withCors(new Response(csv, {
+                    headers: {
+                        "Content-Type": "text/csv; charset=utf-8",
+                        "Content-Disposition": "attachment; filename=hub-dashboard-export.csv",
+                        "Cache-Control": "no-store",
+                    },
+                }));
+            },
+            "/v1/dashboard/export.json": req => {
+                if (req.method === "OPTIONS")
+                    return preflight();
+                if (req.method !== "GET")
+                    return err(405, "Method Not Allowed");
+                const url = new URL(req.url);
+                const payload = buildDashboardExportJson(db, url);
+                return json(payload);
+            },
+        },
+        fetch: () => err(404, "Not Found"),
+    });
+    const startPort = requestedPort ?? parsePort(process.env.TS_HUB_PORT);
+    let server;
+    try {
+        server = serve(startPort);
+    }
+    catch {
+        server = serve(0);
+    }
+    return {
+        port: server.port ?? startPort,
+        url: server.url.toString(),
+        async stop() {
+            await server.stop(true);
+            if (!options.db)
+                db.close();
+        },
+    };
+}
+//# sourceMappingURL=server.js.map
