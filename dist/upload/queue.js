@@ -78,13 +78,13 @@ export function getPendingUploadBuckets(db, limit = 20) {
         .query(`SELECT
          id, bucket_start, bucket_end, anon_project_id, provider_id, model_id,
          request_count, input_tokens, output_tokens, reasoning_tokens, cache_read_tokens, cache_write_tokens,
-          total_cost, output_tps_sum, output_tps_count, output_tps_min, output_tps_max,
+           total_cost, output_tps_sum, output_tps_count, output_tps_min, output_tps_max,
          last_seen, attempt_count, status, next_attempt_at, last_error, sent_at
         FROM upload_queue
-        WHERE status = 'pending' AND next_attempt_at <= strftime('%s', 'now')
+        WHERE status = 'pending' AND next_attempt_at <= unixepoch()
         ORDER BY bucket_start ASC
-        LIMIT $limit;`)
-        .all({ limit: safeLimit });
+        LIMIT ?;`)
+        .all(safeLimit);
     return rows.map(row => ({
         id: row.id,
         bucketStart: row.bucket_start,
