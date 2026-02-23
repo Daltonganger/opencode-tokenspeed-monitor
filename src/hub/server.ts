@@ -23,6 +23,7 @@ import {
   type HubBucketInput,
   upsertHubBuckets,
 } from "./database";
+import { getTokenSpeedLogoWebp } from "../ui/logo";
 
 const DEFAULT_HUB_PORT = 3476;
 const TIMESTAMP_WINDOW_SECONDS = 300;
@@ -413,186 +414,680 @@ function hubDashboardHtml(): string {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>TokenSpeed Hub Dashboard</title>
+  <title>TokenSpeed Hub Command Center</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
   <style>
+    @import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap");
+
     :root {
-      --bg: #eef3fa;
-      --panel: #ffffff;
-      --ink: #0f1a2b;
-      --muted: #5b6778;
-      --line: #d7dfeb;
-      --brand: #1268ff;
+      color-scheme: dark;
+      --bg: #030712;
+      --bg-2: #0f172a;
+      --panel: rgba(15, 23, 42, 0.66);
+      --panel-solid: #111c3b;
+      --line: rgba(255, 255, 255, 0.08);
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --accent: #59c5ff;
+      --accent-2: #906dff;
+      --good: #3fd58f;
+      --warn: #f7bf58;
+      --shadow: 0 16px 44px rgba(0, 7, 30, 0.45);
     }
+
+    body[data-theme="light"] {
+      color-scheme: light;
+      --bg: #ecf4ff;
+      --bg-2: #dae9ff;
+      --panel: rgba(255, 255, 255, 0.9);
+      --panel-solid: #ffffff;
+      --line: rgba(15, 23, 42, 0.08);
+      --text: #132547;
+      --muted: #4f6386;
+      --accent: #1b5eff;
+      --accent-2: #6f42ff;
+      --good: #12945a;
+      --warn: #b67e17;
+      --shadow: 0 16px 30px rgba(55, 85, 160, 0.17);
+    }
+
     * { box-sizing: border-box; }
+
     body {
       margin: 0;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: radial-gradient(circle at top right, #e4ecff 0%, var(--bg) 55%);
-      color: var(--ink);
+      min-height: 100vh;
+      font-family: Inter, "Segoe UI", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 18% 0%, rgba(106, 71, 255, 0.23), transparent 35%),
+        radial-gradient(circle at 88% 20%, rgba(42, 169, 255, 0.18), transparent 38%),
+        linear-gradient(140deg, var(--bg), var(--bg-2));
+      background-attachment: fixed;
     }
-    main {
-      max-width: 1200px;
-      margin: 0 auto;
-      padding: 24px;
+
+    .layout {
       display: grid;
-      gap: 14px;
+      grid-template-columns: 280px minmax(0, 1fr);
+      gap: 16px;
+      max-width: 1540px;
+      margin: 0 auto;
+      padding: 16px;
     }
-    .head {
+
+    .sidebar,
+    .panel,
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: var(--panel);
+      backdrop-filter: blur(16px);
+      box-shadow: var(--shadow);
+    }
+
+    .sidebar {
+      padding: 20px;
+      display: grid;
+      align-content: start;
+      gap: 14px;
+      position: sticky;
+      top: 16px;
+      min-height: calc(100vh - 32px);
+    }
+
+    .logo-wrap {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 14px;
+      background: linear-gradient(140deg, rgba(15, 30, 70, 0.7), rgba(9, 20, 48, 0.82));
+      display: grid;
+      place-items: center;
+    }
+
+    body[data-theme="light"] .logo-wrap {
+      background: linear-gradient(140deg, rgba(247, 252, 255, 0.9), rgba(225, 238, 255, 0.97));
+    }
+
+    .logo-wrap img {
+      width: 100%;
+      max-width: 220px;
+      height: auto;
+    }
+
+    .chip-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .chip {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 7px 11px;
+      font-size: 0.75rem;
+      color: var(--muted);
+      background: rgba(77, 121, 255, 0.14);
+    }
+
+    body[data-theme="light"] .chip {
+      background: rgba(76, 116, 255, 0.08);
+    }
+
+    .mono {
+      font-family: "JetBrains Mono", ui-monospace, monospace;
+    }
+
+    .meta {
+      font-size: 0.84rem;
+      color: var(--muted);
+      display: grid;
+      gap: 8px;
+    }
+
+    .meta > div {
       display: flex;
       justify-content: space-between;
       gap: 12px;
-      align-items: baseline;
     }
-    h1 { margin: 0; font-size: 1.5rem; }
-    .muted { margin: 0; color: var(--muted); }
-    .panel {
-      background: var(--panel);
+
+    .meta strong {
+      color: var(--text);
+    }
+
+    .content {
+      display: grid;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
       border: 1px solid var(--line);
-      border-radius: 12px;
-      padding: 12px;
-      box-shadow: 0 1px 2px rgba(10, 20, 40, 0.05);
+      border-radius: 16px;
+      padding: 14px;
+      background: rgba(9, 18, 42, 0.72);
+      backdrop-filter: blur(10px);
+      box-shadow: var(--shadow);
     }
+
+    body[data-theme="light"] .topbar {
+      background: rgba(255, 255, 255, 0.9);
+    }
+
+    h1 {
+      margin: 0;
+      font-family: "Space Grotesk", Inter, sans-serif;
+      font-size: clamp(1.2rem, 1.2vw + 1rem, 1.8rem);
+    }
+
+    h1 span {
+      background: linear-gradient(94deg, var(--accent), var(--accent-2));
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+
+    .muted {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.84rem;
+    }
+
+    .control-row,
+    .range-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+
+    button,
+    input,
+    select {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--text);
+      padding: 8px 11px;
+      min-height: 44px;
+      font-size: 0.84rem;
+      font-weight: 600;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.14);
+      transition: transform 120ms ease, border-color 120ms ease, background 120ms ease, box-shadow 120ms ease;
+    }
+
+    body[data-theme="light"] button,
+    body[data-theme="light"] input,
+    body[data-theme="light"] select {
+      background: rgba(255, 255, 255, 0.78);
+    }
+
+    button:hover,
+    input:hover,
+    select:hover {
+      transform: translateY(-1px);
+      border-color: rgba(137, 172, 255, 0.42);
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    select {
+      appearance: none;
+      padding-right: 30px;
+      background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+      background-position: calc(100% - 14px) 52%, calc(100% - 9px) 52%;
+      background-size: 5px 5px, 5px 5px;
+      background-repeat: no-repeat;
+    }
+
+    button:focus-visible,
+    input:focus-visible,
+    select:focus-visible,
+    a:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+
+    button[data-range][data-active="true"] {
+      background: linear-gradient(100deg, rgba(84, 192, 255, 0.36), rgba(145, 115, 255, 0.36));
+      border-color: rgba(152, 181, 255, 0.82);
+    }
+
     .filters {
       display: flex;
       flex-wrap: wrap;
-      gap: 10px;
+      gap: 12px;
       align-items: end;
+      padding: 12px;
     }
+
+    .filters input[type="number"] {
+      width: 132px;
+      max-width: 100%;
+    }
+
+    .filters input[type="text"] {
+      width: 168px;
+      max-width: 100%;
+    }
+
+    .filters button {
+      flex: 0 0 auto;
+    }
+
     label {
       display: grid;
-      gap: 4px;
-      font-size: 0.8rem;
+      gap: 6px;
+      font-size: 0.72rem;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
       color: var(--muted);
     }
-    input, button {
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      padding: 7px 10px;
-      background: #fff;
-      color: var(--ink);
-      font-size: 0.9rem;
-    }
-    button { cursor: pointer; background: #f7faff; }
+
     .cards {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
       gap: 10px;
     }
-    .label { font-size: 0.76rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; }
-    .value { margin-top: 6px; font-size: 1.2rem; font-weight: 600; }
-    .grid {
+
+    .card {
+      padding: 20px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .card::after {
+      content: "";
+      position: absolute;
+      width: 120%;
+      aspect-ratio: 1;
+      right: -20%;
+      bottom: -55%;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(111, 179, 255, 0.07), transparent 70%);
+      pointer-events: none;
+    }
+
+    .label {
+      font-size: 0.72rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .value {
+      margin-top: 8px;
+      font-family: "Space Grotesk", Inter, sans-serif;
+      font-size: clamp(1.15rem, 1vw + 0.85rem, 1.6rem);
+      font-weight: 700;
+      line-height: 1.1;
+      letter-spacing: -0.02em;
+    }
+
+    .charts-grid {
       display: grid;
-      grid-template-columns: 1fr;
-      gap: 14px;
+      grid-template-columns: minmax(0, 2.2fr) minmax(0, 1fr);
+      gap: 12px;
     }
-    @media (min-width: 980px) {
-      .grid { grid-template-columns: 1fr 1fr; }
+
+    .panel {
+      padding: 20px;
+      min-width: 0;
     }
+
+    .panel-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .panel-title {
+      margin: 0;
+      font-size: 0.93rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      font-weight: 600;
+    }
+
+    .chart-wrap {
+      height: 320px;
+    }
+
+    .mini-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .mini-chart {
+      height: 220px;
+    }
+
+    .table-wrap {
+      overflow: auto;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+    }
+
     table {
       width: 100%;
       border-collapse: collapse;
-      margin-top: 10px;
-      font-size: 0.9rem;
+      min-width: 760px;
+      font-size: 0.85rem;
+      background: rgba(11, 20, 44, 0.35);
     }
-    th, td {
+
+    body[data-theme="light"] table {
+      background: rgba(255, 255, 255, 0.7);
+    }
+
+    th,
+    td {
       text-align: left;
       border-bottom: 1px solid var(--line);
-      padding: 7px 8px;
-      vertical-align: top;
+      padding: 8px 9px;
+      vertical-align: middle;
     }
-    th { font-size: 0.76rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; }
-    .footer { color: var(--muted); font-size: 0.8rem; }
-    a { color: var(--brand); text-decoration: none; }
+
+    tbody tr:hover {
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    th {
+      position: sticky;
+      top: 0;
+      background: var(--panel-solid);
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-size: 0.71rem;
+      font-weight: 600;
+    }
+
+    .footer {
+      color: var(--muted);
+      font-size: 0.78rem;
+      margin: 0;
+      padding: 0 4px 4px;
+    }
+
+    a {
+      color: var(--accent);
+      text-decoration: none;
+      margin-right: 10px;
+    }
+
+    .status {
+      display: inline-flex;
+      gap: 7px;
+      align-items: center;
+      font-size: 0.82rem;
+      color: var(--muted);
+    }
+
+    .dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: var(--good);
+      box-shadow: 0 0 0 0 rgba(63, 213, 143, 0.55);
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(63, 213, 143, 0.5); }
+      70% { box-shadow: 0 0 0 6px rgba(63, 213, 143, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(63, 213, 143, 0); }
+    }
+
+    .table-wrap::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+
+    .table-wrap::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    .table-wrap::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: 999px;
+    }
+
+    @media (max-width: 1320px) {
+      .layout {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .sidebar {
+        position: static;
+        min-height: auto;
+      }
+
+      .cards {
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      }
+    }
+
+    @media (max-width: 940px) {
+      .charts-grid,
+      .mini-grid,
+      .cards {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .chart-wrap {
+        height: 270px;
+      }
+    }
+
+    @media (max-width: 600px) {
+      .filters {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .filters label,
+      .filters input[type="number"],
+      .filters input[type="text"],
+      .filters button {
+        width: 100%;
+      }
+
+      .topbar {
+        flex-direction: column;
+        align-items: stretch;
+        text-align: center;
+      }
+
+      .control-row,
+      .range-row {
+        justify-content: center;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+      }
+    }
   </style>
 </head>
-<body>
-  <main>
-    <div class="head">
-      <h1>TokenSpeed Hub Dashboard</h1>
-      <p class="muted" id="updated">Loading...</p>
-    </div>
-
-    <section class="panel filters">
-      <label>From (unix sec)
-        <input id="from" type="number" min="0" step="1" placeholder="optional">
-      </label>
-      <label>To (unix sec)
-        <input id="to" type="number" min="0" step="1" placeholder="optional">
-      </label>
-      <label>Provider
-        <input id="provider" type="text" placeholder="optional">
-      </label>
-      <label>Model
-        <input id="model" type="text" placeholder="optional">
-      </label>
-      <label>Anon project
-        <input id="anonProject" type="text" placeholder="optional">
-      </label>
-      <label>Device
-        <input id="device" type="text" placeholder="optional">
-      </label>
-      <label>Anon user
-        <input id="anonUser" type="text" placeholder="optional">
-      </label>
-      <button id="apply" type="button">Apply</button>
-      <button id="last24h" type="button">Last 24h</button>
-      <button id="clear" type="button">Clear</button>
-    </section>
-
-    <section class="cards">
-      <div class="panel"><div class="label">Requests</div><div class="value" id="requests">-</div></div>
-      <div class="panel"><div class="label">Input Tokens</div><div class="value" id="input">-</div></div>
-      <div class="panel"><div class="label">Output Tokens</div><div class="value" id="output">-</div></div>
-      <div class="panel"><div class="label">Reasoning Tokens</div><div class="value" id="reasoning">-</div></div>
-      <div class="panel"><div class="label">Cache Read</div><div class="value" id="cacheRead">-</div></div>
-      <div class="panel"><div class="label">Total Cost</div><div class="value" id="cost">-</div></div>
-    </section>
-
-    <section class="grid">
-      <div class="panel">
-        <strong>Top Models</strong>
-        <table>
-          <thead><tr><th>Provider</th><th>Model</th><th>Req</th><th>Cost</th><th>Avg TPS</th></tr></thead>
-          <tbody id="models"></tbody>
-        </table>
+<body data-theme="dark">
+  <!-- TokenSpeed Hub Dashboard -->
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="logo-wrap"><img src="/assets/tokenspeed-logo.webp" alt="TokenSpeed logo"></div>
+      <div>
+        <h2 style="margin:0; font-family:Space Grotesk, Inter, sans-serif; font-size:1.05rem;">Hub <span style="background:linear-gradient(95deg,var(--accent),var(--accent-2));-webkit-background-clip:text;background-clip:text;color:transparent;">Command Center</span></h2>
+        <p class="muted" style="margin-top:6px;">Centralized usage, cost and throughput analytics across devices.</p>
       </div>
-      <div class="panel">
-        <strong>Top Providers</strong>
-        <table>
-          <thead><tr><th>Provider</th><th>Req</th><th>Input</th><th>Output</th><th>Cost</th></tr></thead>
-          <tbody id="providers"></tbody>
-        </table>
+      <div class="chip-list">
+        <span class="chip">Central Hub</span>
+        <span class="chip">CSV/JSON Export</span>
+        <span class="chip">Multi-Device</span>
       </div>
-      <div class="panel">
-        <strong>Top Projects (anon)</strong>
-        <table>
-          <thead><tr><th>Project</th><th>Req</th><th>Input</th><th>Output</th><th>Cost</th></tr></thead>
-          <tbody id="projects"></tbody>
-        </table>
+      <div class="meta">
+        <div>Last refresh: <strong id="sideUpdated">-</strong></div>
+        <div>Current range: <strong id="rangeMeta">open</strong></div>
+        <div>Grouping: <strong id="groupMeta">hour</strong></div>
       </div>
-    </section>
+      <a href="/admin">Open Admin Panel</a>
+    </aside>
 
-    <section class="panel">
-      <strong>Timeseries</strong>
-      <table>
-        <thead><tr><th>Timestamp</th><th>Tokens</th><th>Cost</th><th>Avg TPS</th><th>Requests</th></tr></thead>
-        <tbody id="timeseries"></tbody>
-      </table>
-    </section>
+    <main class="content">
+      <header class="topbar">
+        <div>
+          <h1>TokenSpeed <span>Hub Dashboard</span></h1>
+          <div class="status"><span class="dot"></span><span id="updated">Loading...</span></div>
+        </div>
+        <div class="control-row">
+          <div class="range-row" id="rangeButtons">
+            <button type="button" data-range="24" data-active="true">24H</button>
+            <button type="button" data-range="168">7D</button>
+            <button type="button" data-range="720">30D</button>
+          </div>
+          <select id="groupBy">
+            <option value="hour">Hour</option>
+            <option value="day">Day</option>
+          </select>
+          <button id="themeToggle" type="button" aria-label="Toggle theme">Toggle Theme</button>
+          <button id="refreshNow" type="button" aria-label="Refresh dashboard">Refresh</button>
+        </div>
+      </header>
 
-    <p class="footer">
-      Endpoints: <a href="/v1/dashboard/summary">/v1/dashboard/summary</a>,
-      <a href="/v1/dashboard/models">/v1/dashboard/models</a>,
-      <a href="/v1/dashboard/projects">/v1/dashboard/projects</a>,
-      <a href="/v1/dashboard/providers">/v1/dashboard/providers</a>,
-      <a href="/v1/dashboard/timeseries">/v1/dashboard/timeseries</a>,
-      <a id="exportCsvLink" href="/v1/dashboard/export.csv">/v1/dashboard/export.csv</a>,
-      <a id="exportJsonLink" href="/v1/dashboard/export.json">/v1/dashboard/export.json</a>
-    </p>
-  </main>
+      <section class="panel filters">
+        <label>From (unix sec)
+          <input id="from" type="number" min="0" step="1" placeholder="optional">
+        </label>
+        <label>To (unix sec)
+          <input id="to" type="number" min="0" step="1" placeholder="optional">
+        </label>
+        <label>Provider
+          <input id="provider" type="text" placeholder="optional">
+        </label>
+        <label>Model
+          <input id="model" type="text" placeholder="optional">
+        </label>
+        <label>Anon project
+          <input id="anonProject" type="text" placeholder="optional">
+        </label>
+        <label>Device
+          <input id="device" type="text" placeholder="optional">
+        </label>
+        <label>Anon user
+          <input id="anonUser" type="text" placeholder="optional">
+        </label>
+        <button id="apply" type="button">Apply</button>
+        <button id="clear" type="button">Clear</button>
+        <button id="last24h" type="button">Last 24h</button>
+      </section>
+
+      <section class="cards">
+        <div class="card"><div class="label">Requests</div><div class="value" id="requests">-</div></div>
+        <div class="card"><div class="label">Input Tokens</div><div class="value" id="input">-</div></div>
+        <div class="card"><div class="label">Output Tokens</div><div class="value" id="output">-</div></div>
+        <div class="card"><div class="label">Reasoning Tokens</div><div class="value" id="reasoning">-</div></div>
+        <div class="card"><div class="label">Cache Read</div><div class="value" id="cacheRead">-</div></div>
+        <div class="card"><div class="label">Total Cost</div><div class="value" id="cost">-</div></div>
+      </section>
+
+      <section class="charts-grid">
+        <article class="panel">
+          <div class="panel-head">
+            <h2 class="panel-title">Timeseries (tokens/cost/tps)</h2>
+            <p class="muted">Based on selected filters</p>
+          </div>
+          <div class="chart-wrap"><canvas id="trendChart"></canvas></div>
+        </article>
+        <article class="panel">
+          <div class="panel-head">
+            <h2 class="panel-title">Timeseries table</h2>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Timestamp</th><th>Tokens</th><th>Cost</th><th>Avg TPS</th><th>Requests</th></tr></thead>
+              <tbody id="timeseries"></tbody>
+            </table>
+          </div>
+        </article>
+      </section>
+
+      <section class="mini-grid">
+        <article class="panel">
+          <div class="panel-head"><h2 class="panel-title">Model usage</h2></div>
+          <div class="mini-chart"><canvas id="modelChart"></canvas></div>
+        </article>
+        <article class="panel">
+          <div class="panel-head"><h2 class="panel-title">Provider load</h2></div>
+          <div class="mini-chart"><canvas id="providerChart"></canvas></div>
+        </article>
+        <article class="panel">
+          <div class="panel-head"><h2 class="panel-title">Project cost map</h2></div>
+          <div class="mini-chart"><canvas id="projectChart"></canvas></div>
+        </article>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2 class="panel-title">Top models / providers / projects</h2>
+          <p class="muted">Drill-down list</p>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Type</th>
+                <th>Primary</th>
+                <th>Secondary</th>
+                <th>Requests</th>
+                <th>Input</th>
+                <th>Output</th>
+                <th>Cost</th>
+                <th>Avg TPS</th>
+              </tr>
+            </thead>
+            <tbody id="combinedRows"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <p class="footer">
+        Endpoints:
+        <a href="/v1/dashboard/summary">/v1/dashboard/summary</a>
+        <a href="/v1/dashboard/models">/v1/dashboard/models</a>
+        <a href="/v1/dashboard/projects">/v1/dashboard/projects</a>
+        <a href="/v1/dashboard/providers">/v1/dashboard/providers</a>
+        <a href="/v1/dashboard/timeseries">/v1/dashboard/timeseries</a>
+        <a id="exportCsvLink" href="/v1/dashboard/export.csv">/v1/dashboard/export.csv</a>
+        <a id="exportJsonLink" href="/v1/dashboard/export.json">/v1/dashboard/export.json</a>
+      </p>
+    </main>
+  </div>
 
   <script>
-    const state = { from: "", to: "", providerId: "", modelId: "", anonProjectId: "", deviceId: "", anonUserId: "" };
+    const state = {
+      from: "",
+      to: "",
+      providerId: "",
+      modelId: "",
+      anonProjectId: "",
+      deviceId: "",
+      anonUserId: "",
+      groupBy: "hour",
+      theme: localStorage.getItem("tokenspeed_theme") || "dark",
+    };
+
     const intFmt = n => Number(n ?? 0).toLocaleString();
     const costFmt = n => "$" + Number(n ?? 0).toFixed(4);
     const numFmt = n => (n === null || n === undefined ? "N/A" : Number(n).toFixed(2));
@@ -600,6 +1095,19 @@ function hubDashboardHtml(): string {
       const d = new Date(Number(ts) * 1000);
       return Number.isNaN(d.getTime()) ? "-" : d.toLocaleString();
     };
+
+    const charts = {
+      trend: null,
+      models: null,
+      providers: null,
+      projects: null,
+    };
+
+    function applyTheme(theme) {
+      state.theme = theme === "light" ? "light" : "dark";
+      document.body.setAttribute("data-theme", state.theme);
+      localStorage.setItem("tokenspeed_theme", state.theme);
+    }
 
     function query(extra) {
       const params = new URLSearchParams();
@@ -628,15 +1136,72 @@ function hubDashboardHtml(): string {
 
     async function getJson(path, extra) {
       const response = await fetch(path + query(extra));
-      if (!response.ok) throw new Error("HTTP " + response.status);
+      if (!response.ok) throw new Error("HTTP " + response.status + " on " + path);
       return response.json();
+    }
+
+    function initCharts() {
+      if (!window.Chart || charts.trend) return;
+
+      charts.trend = new Chart(document.getElementById("trendChart"), {
+        type: "line",
+        data: {
+          labels: ["-"],
+          datasets: [
+            { label: "Tokens", data: [0], borderColor: "#60d0ff", backgroundColor: "rgba(96, 208, 255, 0.18)", fill: true, tension: 0.35, pointRadius: 0 },
+            { label: "Cost", data: [0], borderColor: "#f7bf58", backgroundColor: "rgba(247, 191, 88, 0.13)", fill: true, tension: 0.35, pointRadius: 0 },
+            { label: "TPS", data: [0], borderColor: "#9a78ff", backgroundColor: "rgba(154, 120, 255, 0.12)", fill: true, tension: 0.35, pointRadius: 0 },
+          ],
+        },
+        options: {
+          maintainAspectRatio: false,
+          plugins: { legend: { labels: { color: "#9fafd7" } } },
+          scales: {
+            x: { ticks: { color: "#9fafd7" }, grid: { color: "rgba(123, 152, 255, 0.15)" } },
+            y: { ticks: { color: "#9fafd7" }, grid: { color: "rgba(123, 152, 255, 0.15)" } },
+          },
+        },
+      });
+
+      charts.models = new Chart(document.getElementById("modelChart"), {
+        type: "doughnut",
+        data: { labels: ["none"], datasets: [{ data: [1], backgroundColor: ["#2f3a67"] }] },
+        options: { maintainAspectRatio: false, plugins: { legend: { labels: { color: "#9fafd7" } } } },
+      });
+
+      charts.providers = new Chart(document.getElementById("providerChart"), {
+        type: "bar",
+        data: { labels: ["none"], datasets: [{ data: [0], backgroundColor: "#60d0ff" }] },
+        options: {
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { ticks: { color: "#9fafd7" }, grid: { color: "rgba(123, 152, 255, 0.15)" } },
+            y: { ticks: { color: "#9fafd7" }, grid: { color: "rgba(123, 152, 255, 0.15)" } },
+          },
+        },
+      });
+
+      charts.projects = new Chart(document.getElementById("projectChart"), {
+        type: "bar",
+        data: { labels: ["none"], datasets: [{ data: [0], backgroundColor: ["#8e6fff"] }] },
+        options: {
+          indexAxis: "y",
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { ticks: { color: "#9fafd7" }, grid: { color: "rgba(123, 152, 255, 0.15)" } },
+            y: { ticks: { color: "#9fafd7" }, grid: { display: false } },
+          },
+        },
+      });
     }
 
     function row(cells) {
       const tr = document.createElement("tr");
       for (const value of cells) {
         const td = document.createElement("td");
-        td.textContent = String(value);
+        td.innerHTML = value;
         tr.appendChild(td);
       }
       return tr;
@@ -656,16 +1221,97 @@ function hubDashboardHtml(): string {
       }
     }
 
+    function renderCombinedRows(models, providers, projects) {
+      const tbody = document.getElementById("combinedRows");
+      tbody.innerHTML = "";
+
+      models.slice(0, 8).forEach(item => {
+        tbody.appendChild(row([
+          "Model",
+          '<span class="mono">' + item.providerId + "</span>",
+          '<span class="mono">' + item.modelId + "</span>",
+          intFmt(item.requestCount),
+          intFmt(item.totalInputTokens),
+          intFmt(item.totalOutputTokens),
+          costFmt(item.totalCost),
+          numFmt(item.avgOutputTps),
+        ]));
+      });
+
+      providers.slice(0, 8).forEach(item => {
+        tbody.appendChild(row([
+          "Provider",
+          '<span class="mono">' + item.providerId + "</span>",
+          "-",
+          intFmt(item.requestCount),
+          intFmt(item.totalInputTokens),
+          intFmt(item.totalOutputTokens),
+          costFmt(item.totalCost),
+          numFmt(item.avgOutputTps),
+        ]));
+      });
+
+      projects.slice(0, 8).forEach(item => {
+        tbody.appendChild(row([
+          "Project",
+          '<span class="mono">' + item.anonProjectId + "</span>",
+          tsFmt(item.lastBucketEnd || 0),
+          intFmt(item.requestCount),
+          intFmt(item.totalInputTokens),
+          intFmt(item.totalOutputTokens),
+          costFmt(item.totalCost),
+          "-",
+        ]));
+      });
+    }
+
+    function applyRange(hours) {
+      const now = Math.floor(Date.now() / 1000);
+      state.from = String(now - hours * 3600);
+      state.to = String(now);
+      document.getElementById("from").value = state.from;
+      document.getElementById("to").value = state.to;
+      document.getElementById("rangeMeta").textContent = hours + "h";
+    }
+
+    function updateCharts(models, providers, projects, mergedSeries) {
+      if (!charts.trend) return;
+
+      charts.trend.data.labels = mergedSeries.map(item => tsFmt(item.ts));
+      charts.trend.data.datasets[0].data = mergedSeries.map(item => item.tokens);
+      charts.trend.data.datasets[1].data = mergedSeries.map(item => Number(item.cost.toFixed(4)));
+      charts.trend.data.datasets[2].data = mergedSeries.map(item => Number(item.tps.toFixed(2)));
+      charts.trend.update("none");
+
+      const topModels = models.slice(0, 6);
+      charts.models.data.labels = topModels.map(item => item.modelId);
+      charts.models.data.datasets[0].data = topModels.map(item => item.requestCount);
+      charts.models.data.datasets[0].backgroundColor = ["#64d8ff", "#8e79ff", "#44cf8d", "#f2b259", "#ff6a96", "#7fa2ff"];
+      charts.models.update("none");
+
+      const topProviders = providers.slice(0, 6);
+      charts.providers.data.labels = topProviders.map(item => item.providerId);
+      charts.providers.data.datasets[0].data = topProviders.map(item => item.requestCount);
+      charts.providers.data.datasets[0].backgroundColor = "#62d4ff";
+      charts.providers.update("none");
+
+      const topProjects = projects.slice(0, 6);
+      charts.projects.data.labels = topProjects.map(item => item.anonProjectId);
+      charts.projects.data.datasets[0].data = topProjects.map(item => Number(item.totalCost || 0));
+      charts.projects.data.datasets[0].backgroundColor = ["#66ccff", "#7f74ff", "#4ed193", "#f5b751", "#ff739b", "#9d82ff"];
+      charts.projects.update("none");
+    }
+
     async function load() {
       try {
         const [summary, models, providers, projects, tokensSeries, costSeries, tpsSeries] = await Promise.all([
           getJson("/v1/dashboard/summary"),
-          getJson("/v1/dashboard/models", { limit: 30 }),
-          getJson("/v1/dashboard/providers", { limit: 30 }),
-          getJson("/v1/dashboard/projects", { limit: 30 }),
-          getJson("/v1/dashboard/timeseries", { metric: "tokens", groupBy: "hour", limit: 48 }),
-          getJson("/v1/dashboard/timeseries", { metric: "cost", groupBy: "hour", limit: 48 }),
-          getJson("/v1/dashboard/timeseries", { metric: "tps", groupBy: "hour", limit: 48 })
+          getJson("/v1/dashboard/models", { limit: 40 }),
+          getJson("/v1/dashboard/providers", { limit: 40 }),
+          getJson("/v1/dashboard/projects", { limit: 40 }),
+          getJson("/v1/dashboard/timeseries", { metric: "tokens", groupBy: state.groupBy, limit: 90 }),
+          getJson("/v1/dashboard/timeseries", { metric: "cost", groupBy: state.groupBy, limit: 90 }),
+          getJson("/v1/dashboard/timeseries", { metric: "tps", groupBy: state.groupBy, limit: 90 }),
         ]);
 
         document.getElementById("requests").textContent = intFmt(summary.requestCount);
@@ -674,30 +1320,6 @@ function hubDashboardHtml(): string {
         document.getElementById("reasoning").textContent = intFmt(summary.totalReasoningTokens);
         document.getElementById("cacheRead").textContent = intFmt(summary.totalCacheReadTokens);
         document.getElementById("cost").textContent = costFmt(summary.totalCost);
-
-        setRows("models", models, item => [
-          item.providerId,
-          item.modelId,
-          intFmt(item.requestCount),
-          costFmt(item.totalCost),
-          numFmt(item.avgOutputTps)
-        ], 5);
-
-        setRows("projects", projects, item => [
-          item.anonProjectId,
-          intFmt(item.requestCount),
-          intFmt(item.totalInputTokens),
-          intFmt(item.totalOutputTokens),
-          costFmt(item.totalCost)
-        ], 5);
-
-        setRows("providers", providers, item => [
-          item.providerId,
-          intFmt(item.requestCount),
-          intFmt(item.totalInputTokens),
-          intFmt(item.totalOutputTokens),
-          costFmt(item.totalCost)
-        ], 5);
 
         const byTs = new Map();
         for (const point of tokensSeries) byTs.set(point.ts, { ts: point.ts, tokens: point.value, cost: 0, tps: 0, requestCount: point.requestCount });
@@ -712,48 +1334,49 @@ function hubDashboardHtml(): string {
           byTs.set(point.ts, current);
         }
 
-        const mergedSeries = [...byTs.values()].sort((a, b) => a.ts - b.ts).slice(-24);
+        const mergedSeries = [...byTs.values()].sort((a, b) => a.ts - b.ts).slice(-36);
+
         setRows("timeseries", mergedSeries, item => [
           tsFmt(item.ts),
           intFmt(item.tokens),
           costFmt(item.cost),
           numFmt(item.tps),
-          intFmt(item.requestCount)
+          intFmt(item.requestCount),
         ], 5);
 
-        document.getElementById("updated").textContent = "Updated: " + new Date().toLocaleTimeString();
+        renderCombinedRows(models, providers, projects);
+        updateCharts(models, providers, projects, mergedSeries.length ? mergedSeries : [{ ts: 0, tokens: 0, cost: 0, tps: 0, requestCount: 0 }]);
+
+        const now = new Date().toLocaleTimeString();
+        document.getElementById("updated").textContent = "Updated " + now;
+        document.getElementById("sideUpdated").textContent = now;
+        document.getElementById("groupMeta").textContent = state.groupBy;
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
         document.getElementById("updated").textContent = "Load failed: " + msg;
       }
     }
 
-    document.getElementById("apply").addEventListener("click", () => {
-      const from = document.getElementById("from").value.trim();
-      const to = document.getElementById("to").value.trim();
-      const provider = document.getElementById("provider").value.trim();
-      const model = document.getElementById("model").value.trim();
-      const anonProject = document.getElementById("anonProject").value.trim();
-      const device = document.getElementById("device").value.trim();
-      const anonUser = document.getElementById("anonUser").value.trim();
-      state.from = from;
-      state.to = to;
-      state.providerId = provider;
-      state.modelId = model;
-      state.anonProjectId = anonProject;
-      state.deviceId = device;
-      state.anonUserId = anonUser;
+    function applyFiltersFromInputs() {
+      state.from = document.getElementById("from").value.trim();
+      state.to = document.getElementById("to").value.trim();
+      state.providerId = document.getElementById("provider").value.trim();
+      state.modelId = document.getElementById("model").value.trim();
+      state.anonProjectId = document.getElementById("anonProject").value.trim();
+      state.deviceId = document.getElementById("device").value.trim();
+      state.anonUserId = document.getElementById("anonUser").value.trim();
+      state.groupBy = document.getElementById("groupBy").value;
+      if (state.from && state.to) {
+        document.getElementById("rangeMeta").textContent = state.from + " - " + state.to;
+      } else {
+        document.getElementById("rangeMeta").textContent = "open";
+      }
       refreshExportLink();
-      load();
-    });
+    }
 
-    document.getElementById("last24h").addEventListener("click", () => {
-      const now = Math.floor(Date.now() / 1000);
-      state.from = String(now - 86400);
-      state.to = String(now);
-      document.getElementById("from").value = state.from;
-      document.getElementById("to").value = state.to;
-      load();
+    document.getElementById("apply").addEventListener("click", () => {
+      applyFiltersFromInputs();
+      void load();
     });
 
     document.getElementById("clear").addEventListener("click", () => {
@@ -771,13 +1394,53 @@ function hubDashboardHtml(): string {
       document.getElementById("anonProject").value = "";
       document.getElementById("device").value = "";
       document.getElementById("anonUser").value = "";
+      document.getElementById("rangeMeta").textContent = "open";
       refreshExportLink();
-      load();
+      void load();
     });
 
-    refreshExportLink();
-    load();
-    setInterval(load, 10000);
+    document.getElementById("last24h").addEventListener("click", () => {
+      applyRange(24);
+      applyFiltersFromInputs();
+      void load();
+    });
+
+    document.getElementById("refreshNow").addEventListener("click", () => {
+      applyFiltersFromInputs();
+      void load();
+    });
+
+    document.getElementById("themeToggle").addEventListener("click", () => {
+      applyTheme(state.theme === "dark" ? "light" : "dark");
+    });
+
+    document.getElementById("groupBy").addEventListener("change", () => {
+      state.groupBy = document.getElementById("groupBy").value;
+      applyFiltersFromInputs();
+      void load();
+    });
+
+    document.querySelectorAll("button[data-range]").forEach(button => {
+      button.addEventListener("click", () => {
+        const hours = Number(button.getAttribute("data-range"));
+        if (!Number.isFinite(hours) || hours <= 0) return;
+        applyRange(hours);
+        document.querySelectorAll("button[data-range]").forEach(node => node.setAttribute("data-active", "false"));
+        button.setAttribute("data-active", "true");
+        applyFiltersFromInputs();
+        void load();
+      });
+    });
+
+    applyTheme(state.theme);
+    applyRange(24);
+    applyFiltersFromInputs();
+    initCharts();
+    void load();
+    setInterval(() => {
+      applyFiltersFromInputs();
+      void load();
+    }, 10000);
   </script>
 </body>
 </html>`;
@@ -791,19 +1454,26 @@ function hubAdminHtml(): string {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>TokenSpeed Hub Admin</title>
   <style>
+    @import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600;700&display=swap");
+
     :root {
-      --bg: #f0f4fb;
-      --panel: #ffffff;
-      --ink: #0f1a2b;
-      --muted: #5b6778;
-      --line: #d7dfeb;
-      --brand: #1268ff;
+      color-scheme: dark;
+      --bg: #060b1f;
+      --bg2: #0d1739;
+      --panel: rgba(16, 27, 58, 0.82);
+      --ink: #e7efff;
+      --muted: #9aabd4;
+      --line: rgba(109, 141, 255, 0.25);
+      --brand: #5ac6ff;
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: var(--bg);
+      font-family: Inter, "Segoe UI", sans-serif;
+      background:
+        radial-gradient(circle at 20% 0%, rgba(108, 72, 255, 0.22), transparent 36%),
+        radial-gradient(circle at 90% 20%, rgba(41, 164, 255, 0.17), transparent 38%),
+        linear-gradient(140deg, var(--bg), var(--bg2));
       color: var(--ink);
     }
     main {
@@ -816,11 +1486,30 @@ function hubAdminHtml(): string {
     .panel {
       background: var(--panel);
       border: 1px solid var(--line);
-      border-radius: 12px;
+      border-radius: 14px;
       padding: 12px;
+      backdrop-filter: blur(16px);
+      box-shadow: 0 16px 44px rgba(0, 7, 30, 0.45);
     }
     h1 { margin: 0 0 8px 0; font-size: 1.4rem; }
     .muted { margin: 0; color: var(--muted); }
+    .hero {
+      display: grid;
+      grid-template-columns: 140px 1fr;
+      gap: 12px;
+      align-items: center;
+    }
+    .hero-logo {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 8px;
+      background: rgba(9, 20, 48, 0.78);
+    }
+    .hero-logo img {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
     .grid {
       display: grid;
       grid-template-columns: 1fr;
@@ -839,13 +1528,19 @@ function hubAdminHtml(): string {
       border: 1px solid var(--line);
       border-radius: 8px;
       padding: 7px 10px;
-      background: #fff;
+      min-height: 44px;
+      background: rgba(255, 255, 255, 0.06);
       color: var(--ink);
       font-size: 0.9rem;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.14);
     }
     button {
       cursor: pointer;
-      background: #f7faff;
+      background: rgba(255, 255, 255, 0.1);
+    }
+    input:focus-visible, button:focus-visible, a:focus-visible {
+      outline: 2px solid var(--brand);
+      outline-offset: 2px;
     }
     table {
       width: 100%;
@@ -862,7 +1557,7 @@ function hubAdminHtml(): string {
     th { font-size: 0.76rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; }
     pre {
       margin: 0;
-      background: #f7f9fd;
+      background: rgba(7, 15, 35, 0.8);
       border: 1px solid var(--line);
       border-radius: 8px;
       padding: 8px;
@@ -871,13 +1566,36 @@ function hubAdminHtml(): string {
       font-size: 0.8rem;
     }
     a { color: var(--brand); text-decoration: none; }
+
+    tbody tr:hover {
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    @media (max-width: 760px) {
+      .hero { grid-template-columns: 1fr; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
   </style>
 </head>
 <body>
   <main>
     <section class="panel">
-      <h1>TokenSpeed Hub Admin</h1>
-      <p class="muted">Manage devices using invite and admin tokens.</p>
+      <div class="hero">
+        <div class="hero-logo"><img src="/assets/tokenspeed-logo.webp" alt="TokenSpeed logo"></div>
+        <div>
+          <h1>TokenSpeed Hub Admin</h1>
+          <p class="muted">Manage devices using invite and admin tokens.</p>
+        </div>
+      </div>
     </section>
 
     <section class="panel grid">
@@ -1132,12 +1850,16 @@ function hubAdminLoginHtml(errorMessage?: string): string {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>TokenSpeed Hub Admin Login</title>
   <style>
+    @import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600;700&display=swap");
+
     :root {
-      --bg: #f0f4fb;
-      --panel: #ffffff;
-      --ink: #0f1a2b;
-      --muted: #5b6778;
-      --line: #d7dfeb;
+      color-scheme: dark;
+      --bg: #060b1f;
+      --bg2: #0d1739;
+      --panel: rgba(15, 26, 55, 0.86);
+      --ink: #e9efff;
+      --muted: #9eafd6;
+      --line: rgba(109, 141, 255, 0.24);
       --danger: #b42318;
     }
     * { box-sizing: border-box; }
@@ -1146,8 +1868,11 @@ function hubAdminLoginHtml(errorMessage?: string): string {
       min-height: 100vh;
       display: grid;
       place-items: center;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: radial-gradient(circle at 15% 15%, #ffffff, var(--bg));
+      font-family: Inter, "Segoe UI", sans-serif;
+      background:
+        radial-gradient(circle at 20% 0%, rgba(108, 72, 255, 0.24), transparent 36%),
+        radial-gradient(circle at 90% 20%, rgba(41, 164, 255, 0.18), transparent 38%),
+        linear-gradient(140deg, var(--bg), var(--bg2));
       color: var(--ink);
     }
     main {
@@ -1158,9 +1883,28 @@ function hubAdminLoginHtml(errorMessage?: string): string {
       padding: 20px;
       display: grid;
       gap: 12px;
+      box-shadow: 0 18px 44px rgba(1, 8, 33, 0.5);
+      backdrop-filter: blur(10px);
     }
-    h1 { margin: 0; font-size: 1.2rem; }
+    h1 {
+      margin: 0;
+      font-size: 1.2rem;
+      font-family: "Space Grotesk", Inter, sans-serif;
+    }
     p { margin: 0; color: var(--muted); }
+    .logo-wrap {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px;
+      background: rgba(8, 18, 44, 0.8);
+      display: grid;
+      place-items: center;
+    }
+    .logo-wrap img {
+      width: min(240px, 100%);
+      height: auto;
+      display: block;
+    }
     .error {
       color: var(--danger);
       background: #fff2f0;
@@ -1178,26 +1922,42 @@ function hubAdminLoginHtml(errorMessage?: string): string {
       border: 1px solid var(--line);
       border-radius: 9px;
       padding: 9px 11px;
+      min-height: 44px;
       font-size: 0.93rem;
       color: var(--ink);
-      background: #fff;
+      background: rgba(255, 255, 255, 0.08);
     }
     button {
       cursor: pointer;
       font-weight: 600;
-      background: #eef4ff;
+      background: rgba(255, 255, 255, 0.12);
+    }
+    input:focus-visible, button:focus-visible {
+      outline: 2px solid #5ac6ff;
+      outline-offset: 2px;
     }
     code {
       font-size: 0.82rem;
-      background: #f5f7fc;
+      background: rgba(34, 56, 118, 0.35);
       border: 1px solid var(--line);
       border-radius: 6px;
       padding: 2px 6px;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
     }
   </style>
 </head>
 <body>
   <main>
+    <div class="logo-wrap"><img src="/assets/tokenspeed-logo.webp" alt="TokenSpeed logo"></div>
     <h1>TokenSpeed Hub Admin</h1>
     <p>Admin access requires <code>TS_HUB_ADMIN_TOKEN</code>. Enter the token to continue.</p>
     ${message}
@@ -1441,6 +2201,20 @@ export function startHubServer(requestedPort?: number, options: HubServerOptions
               headers: {
                 "Content-Type": "text/html; charset=utf-8",
                 "Cache-Control": "no-store",
+              },
+            }),
+          );
+        },
+        "/assets/tokenspeed-logo.webp": req => {
+          if (req.method === "OPTIONS") return preflight();
+          if (req.method !== "GET") return err(405, "Method Not Allowed");
+          const logo = getTokenSpeedLogoWebp();
+          if (!logo) return err(404, "Logo not found");
+          return withCors(
+            new Response(logo, {
+              headers: {
+                "Content-Type": "image/webp",
+                "Cache-Control": "public, max-age=86400",
               },
             }),
           );
