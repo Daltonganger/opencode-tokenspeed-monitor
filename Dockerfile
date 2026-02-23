@@ -8,7 +8,7 @@ COPY commands ./commands
 COPY README.md LICENSE ./
 
 RUN bun install --frozen-lockfile
-RUN npm run build
+RUN bun run build
 
 FROM oven/bun:1.2
 

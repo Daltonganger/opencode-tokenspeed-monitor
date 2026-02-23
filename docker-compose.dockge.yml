@@ -17,6 +17,16 @@ services:
       TS_HUB_ADMIN_LOGIN_MAX_ATTEMPTS: ${TS_HUB_ADMIN_LOGIN_MAX_ATTEMPTS:-10}
     volumes:
       - tokenspeed_hub_data:/data
+    networks:
+      - default
+      - traefik-network
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=traefik-network
+      - traefik.http.routers.tokenspeed-hub.rule=Host(`tokenspeed.2631.eu`)
+      - traefik.http.routers.tokenspeed-hub.entrypoints=websecure
+      - traefik.http.routers.tokenspeed-hub.tls=true
+      - traefik.http.services.tokenspeed-hub.loadbalancer.server.port=3476
     healthcheck:
       test:
         [
@@ -32,3 +42,7 @@ services:
 
 volumes:
   tokenspeed_hub_data:
+
+networks:
+  traefik-network:
+    external: true

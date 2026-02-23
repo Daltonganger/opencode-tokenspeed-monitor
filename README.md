@@ -98,10 +98,11 @@ bun run build
 - `TS_BG_PORT` (optional): local dashboard/API port (default: `3456`)
 - `TS_DB_PATH` (optional): explicit local SQLite database path
 - `OPENCODE_HOME` (optional): OpenCode home directory; default storage under `~/.local/share/opencode/tokenspeed-monitor/`
-- `TS_UPLOAD_ENABLED` (optional): enable upload dispatcher (`1/true/on`)
-- `TS_HUB_URL` (optional): hub ingest base URL (example: `https://hub.example.com`)
-- `TS_HUB_SIGNING_KEY` (optional): signing key used for hub request signatures
-- `TS_HUB_INVITE_TOKEN` (optional): invite token used for automatic device registration
+- `TS_UPLOAD_ENABLED` (optional): enable upload dispatcher (`1/true/on`). Default: `on` (set `0/false/off` to disable).
+- `TS_HUB_URL` (optional): hub ingest base URL. Default: `https://tokenspeed.2631.eu`
+- `TS_HUB_SIGNING_KEY` (optional): explicit signing key used for hub request signatures
+- `TS_HUB_INVITE_TOKEN` (optional): invite token for protected `/v1/devices/register`; not required for auto-bootstrap
+- `TS_HUB_ANON_USER_ID` (optional): override anonymous user ID used for hub onboarding/filtering
 - `TS_HUB_DEVICE_ID` (optional): explicit device identifier override
 - `TS_HUB_DEVICE_LABEL` (optional): device label sent during registration
 - `TS_UPLOAD_INTERVAL_SEC` (optional): upload dispatcher interval in seconds (default `30`)
@@ -175,7 +176,7 @@ cp .env.dockge.example .env
 ```
 
 2. In Dockge, create a stack using `docker-compose.dockge.yml`.
-3. Ensure at least one of `TS_HUB_SIGNING_KEY` or `TS_HUB_INVITE_TOKEN` is set, plus `TS_HUB_ADMIN_TOKEN`.
+3. Set `TS_HUB_ADMIN_TOKEN`. `TS_HUB_INVITE_TOKEN` is optional and only needed if you want protected manual registration.
 4. Start the stack.
 
 Local Docker CLI alternative:
@@ -183,6 +184,22 @@ Local Docker CLI alternative:
 ```bash
 docker compose -f docker-compose.dockge.yml up -d --build
 ```
+
+### Auto deploy to 2631US
+
+For your VPS alias (`2631US` in `~/.ssh/config`), use the built-in deploy script:
+
+```bash
+npm run deploy:2631us
+```
+
+Optional overrides:
+
+```bash
+TARGET_HOST=2631US TARGET_DIR=/opt/stacks/tokenspeed-hub BRANCH=main npm run deploy:2631us
+```
+
+The script will pull latest code on the server, run `docker compose up -d --build`, and verify `/v1/health`.
 
 Open dashboard in browser:
 
@@ -201,19 +218,20 @@ Note: `/admin` now requires `TS_HUB_ADMIN_TOKEN`. Open the page and submit the t
 Hub endpoints:
 
 - `GET /v1/health`
+- `POST /v1/devices/bootstrap` (auto-onboarding; returns `deviceId`, `anonUserId`, `signingKey`)
 - `POST /v1/devices/register`
 - `GET /v1/devices` (admin token required)
 - `POST /v1/devices/revoke` (admin token required)
 - `POST /v1/devices/activate` (admin token required)
 - `POST /v1/devices/bulk` (admin token required, action=`revoke|activate`)
 - `POST /v1/ingest/buckets`
-- `GET /v1/dashboard/summary?from=&to=&providerId=&modelId=&anonProjectId=`
-- `GET /v1/dashboard/models?from=&to=&limit=&providerId=&modelId=&anonProjectId=`
-- `GET /v1/dashboard/providers?from=&to=&limit=&providerId=&modelId=&anonProjectId=`
-- `GET /v1/dashboard/projects?from=&to=&limit=&providerId=&modelId=&anonProjectId=`
-- `GET /v1/dashboard/timeseries?metric=tokens|cost|tps&groupBy=hour|day&from=&to=&providerId=&modelId=&anonProjectId=`
-- `GET /v1/dashboard/export.csv?from=&to=&providerId=&modelId=&anonProjectId=`
-- `GET /v1/dashboard/export.json?from=&to=&providerId=&modelId=&anonProjectId=&groupBy=hour|day`
+- `GET /v1/dashboard/summary?from=&to=&providerId=&modelId=&anonProjectId=&deviceId=&anonUserId=`
+- `GET /v1/dashboard/models?from=&to=&limit=&providerId=&modelId=&anonProjectId=&deviceId=&anonUserId=`
+- `GET /v1/dashboard/providers?from=&to=&limit=&providerId=&modelId=&anonProjectId=&deviceId=&anonUserId=`
+- `GET /v1/dashboard/projects?from=&to=&limit=&providerId=&modelId=&anonProjectId=&deviceId=&anonUserId=`
+- `GET /v1/dashboard/timeseries?metric=tokens|cost|tps&groupBy=hour|day&from=&to=&providerId=&modelId=&anonProjectId=&deviceId=&anonUserId=`
+- `GET /v1/dashboard/export.csv?from=&to=&providerId=&modelId=&anonProjectId=&deviceId=&anonUserId=`
+- `GET /v1/dashboard/export.json?from=&to=&providerId=&modelId=&anonProjectId=&deviceId=&anonUserId=&groupBy=hour|day`
 
 Deployment guide: `DEPLOYMENT-HUB.md`
 

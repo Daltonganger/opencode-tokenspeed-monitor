@@ -1,6 +1,6 @@
 {
   "name": "opencode-tokenspeed-monitor",
-  "version": "0.1.4",
+  "version": "0.1.6",
   "type": "module",
   "description": "Monitor token speed per request with SQLite persistence and HTTP API",
   "license": "MIT",
@@ -38,6 +38,7 @@
     "dev": "tsc --watch",
     "test": "bun test src/**/*.test.ts",
     "hub:start": "bun src/hub/main.ts",
+    "deploy:2631us": "bash ./scripts/deploy-2631us.sh",
     "pack:check": "npm pack --dry-run",
     "release:check": "bun test src/**/*.test.ts && npm run build && npm run pack:check"
   },

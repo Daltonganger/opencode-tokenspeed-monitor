@@ -36,6 +36,27 @@ npm run build
 bun run hub:start
 ```
 
+### Automatic remote deploy to 2631US (recommended)
+
+From your local repo:
+
+```bash
+npm run deploy:2631us
+```
+
+This uses `scripts/deploy-2631us.sh` and performs on `2631US`:
+
+- Clone/pull repo in `/opt/stacks/tokenspeed-hub`
+- Checkout/pull `main`
+- `docker compose -f docker-compose.dockge.yml up -d --build`
+- Health check `http://127.0.0.1:3476/v1/health`
+
+Optional overrides:
+
+```bash
+TARGET_HOST=2631US TARGET_DIR=/opt/stacks/tokenspeed-hub BRANCH=main npm run deploy:2631us
+```
+
 ## 4) Health and smoke checks
 
 ```bash
