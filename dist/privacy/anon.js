@@ -33,4 +33,9 @@ export function getAnonDeviceID() {
     const digest = createHmac("sha256", "tokenspeed-device").update(salt).digest("hex");
     return `dev_${digest.slice(0, 20)}`;
 }
+export function getAnonUserID() {
+    const salt = readOrCreateSalt();
+    const digest = createHmac("sha256", "tokenspeed-user").update(salt).digest("hex");
+    return `usr_${digest.slice(0, 24)}`;
+}
 //# sourceMappingURL=anon.js.map

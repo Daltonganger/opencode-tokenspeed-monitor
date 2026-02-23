@@ -53,8 +53,15 @@ type IngestPayload = {
 
 type RegisterPayload = {
   deviceId?: string;
+  anonUserId?: string;
   label?: string;
   inviteToken: string;
+};
+
+type BootstrapPayload = {
+  deviceId?: string;
+  anonUserId?: string;
+  label?: string;
 };
 
 type RevokePayload = {
@@ -144,11 +151,15 @@ function parseDashboardFilters(url: URL): HubDashboardFilters {
   const anonProjectId = url.searchParams.get("anonProjectId")?.trim();
   const providerId = url.searchParams.get("providerId")?.trim();
   const modelId = url.searchParams.get("modelId")?.trim();
+  const deviceId = url.searchParams.get("deviceId")?.trim();
+  const anonUserId = url.searchParams.get("anonUserId")?.trim();
 
   return {
     anonProjectId: anonProjectId || undefined,
     providerId: providerId || undefined,
     modelId: modelId || undefined,
+    deviceId: deviceId || undefined,
+    anonUserId: anonUserId || undefined,
   };
 }
 
@@ -185,6 +196,8 @@ function buildDashboardExportCsv(db: Database, url: URL): string {
       "anonProjectId",
       "providerId",
       "modelId",
+      "deviceId",
+      "anonUserId",
       "timestamp",
       "metric",
       "groupBy",
@@ -210,6 +223,8 @@ function buildDashboardExportCsv(db: Database, url: URL): string {
       filters.anonProjectId ?? "",
       filters.providerId ?? "",
       filters.modelId ?? "",
+      filters.deviceId ?? "",
+      filters.anonUserId ?? "",
       "",
       "",
       "",
@@ -236,6 +251,8 @@ function buildDashboardExportCsv(db: Database, url: URL): string {
         filters.anonProjectId ?? "",
         model.providerId,
         model.modelId,
+        filters.deviceId ?? "",
+        filters.anonUserId ?? "",
         "",
         "",
         "",
@@ -263,6 +280,8 @@ function buildDashboardExportCsv(db: Database, url: URL): string {
         filters.anonProjectId ?? "",
         provider.providerId,
         "",
+        filters.deviceId ?? "",
+        filters.anonUserId ?? "",
         "",
         "",
         "",
@@ -290,6 +309,8 @@ function buildDashboardExportCsv(db: Database, url: URL): string {
         project.anonProjectId,
         "",
         "",
+        filters.deviceId ?? "",
+        filters.anonUserId ?? "",
         project.lastBucketEnd ?? "",
         "",
         "",
@@ -315,10 +336,12 @@ function buildDashboardExportCsv(db: Database, url: URL): string {
           "timeseries",
           range.from ?? "",
           range.to ?? "",
-          filters.anonProjectId ?? "",
-          filters.providerId ?? "",
-          filters.modelId ?? "",
-          point.ts,
+        filters.anonProjectId ?? "",
+        filters.providerId ?? "",
+        filters.modelId ?? "",
+        filters.deviceId ?? "",
+        filters.anonUserId ?? "",
+        point.ts,
           metric,
           groupBy,
           point.requestCount,
@@ -368,6 +391,8 @@ function buildDashboardExportJson(db: Database, url: URL): unknown {
         anonProjectId: filters.anonProjectId ?? null,
         providerId: filters.providerId ?? null,
         modelId: filters.modelId ?? null,
+        deviceId: filters.deviceId ?? null,
+        anonUserId: filters.anonUserId ?? null,
       },
     },
     summary,
@@ -503,6 +528,12 @@ function hubDashboardHtml(): string {
       <label>Anon project
         <input id="anonProject" type="text" placeholder="optional">
       </label>
+      <label>Device
+        <input id="device" type="text" placeholder="optional">
+      </label>
+      <label>Anon user
+        <input id="anonUser" type="text" placeholder="optional">
+      </label>
       <button id="apply" type="button">Apply</button>
       <button id="last24h" type="button">Last 24h</button>
       <button id="clear" type="button">Clear</button>
@@ -561,7 +592,7 @@ function hubDashboardHtml(): string {
   </main>
 
   <script>
-    const state = { from: "", to: "", providerId: "", modelId: "", anonProjectId: "" };
+    const state = { from: "", to: "", providerId: "", modelId: "", anonProjectId: "", deviceId: "", anonUserId: "" };
     const intFmt = n => Number(n ?? 0).toLocaleString();
     const costFmt = n => "$" + Number(n ?? 0).toFixed(4);
     const numFmt = n => (n === null || n === undefined ? "N/A" : Number(n).toFixed(2));
@@ -577,6 +608,8 @@ function hubDashboardHtml(): string {
       if (state.providerId) params.set("providerId", state.providerId);
       if (state.modelId) params.set("modelId", state.modelId);
       if (state.anonProjectId) params.set("anonProjectId", state.anonProjectId);
+      if (state.deviceId) params.set("deviceId", state.deviceId);
+      if (state.anonUserId) params.set("anonUserId", state.anonUserId);
       if (extra) {
         for (const [key, value] of Object.entries(extra)) {
           if (value !== undefined && value !== null && value !== "") params.set(key, String(value));
@@ -701,11 +734,15 @@ function hubDashboardHtml(): string {
       const provider = document.getElementById("provider").value.trim();
       const model = document.getElementById("model").value.trim();
       const anonProject = document.getElementById("anonProject").value.trim();
+      const device = document.getElementById("device").value.trim();
+      const anonUser = document.getElementById("anonUser").value.trim();
       state.from = from;
       state.to = to;
       state.providerId = provider;
       state.modelId = model;
       state.anonProjectId = anonProject;
+      state.deviceId = device;
+      state.anonUserId = anonUser;
       refreshExportLink();
       load();
     });
@@ -725,11 +762,15 @@ function hubDashboardHtml(): string {
       state.providerId = "";
       state.modelId = "";
       state.anonProjectId = "";
+      state.deviceId = "";
+      state.anonUserId = "";
       document.getElementById("from").value = "";
       document.getElementById("to").value = "";
       document.getElementById("provider").value = "";
       document.getElementById("model").value = "";
       document.getElementById("anonProject").value = "";
+      document.getElementById("device").value = "";
+      document.getElementById("anonUser").value = "";
       refreshExportLink();
       load();
     });
@@ -849,6 +890,12 @@ function hubAdminHtml(): string {
       <label>Device ID
         <input id="deviceId" type="text" placeholder="optional for register, required for revoke">
       </label>
+      <label>Anon user ID
+        <input id="anonUserId" type="text" placeholder="optional for register/list">
+      </label>
+      <label>Status filter
+        <input id="deviceStatus" type="text" placeholder="active or revoked">
+      </label>
       <label>Label
         <input id="label" type="text" placeholder="optional for register">
       </label>
@@ -872,7 +919,7 @@ function hubAdminHtml(): string {
       <table>
         <thead>
           <tr>
-            <th>Device</th><th>Label</th><th>Status</th><th>Last Seen</th><th>Updated</th>
+            <th>Device</th><th>Anon User</th><th>Label</th><th>Status</th><th>Last Seen</th><th>Updated</th>
           </tr>
         </thead>
         <tbody id="devices"></tbody>
@@ -912,12 +959,13 @@ function hubAdminHtml(): string {
       const tbody = byId("devices");
       tbody.innerHTML = "";
       if (!devices.length) {
-        tbody.appendChild(row(["No devices", "", "", "", ""]));
+        tbody.appendChild(row(["No devices", "", "", "", "", ""]));
         return;
       }
       for (const device of devices) {
         tbody.appendChild(row([
           device.deviceId,
+          device.anonUserId || "",
           device.label || "",
           device.status,
           fmtTs(device.lastSeen),
@@ -933,7 +981,14 @@ function hubAdminHtml(): string {
     }
     async function listDevices() {
       const adminToken = byId("adminToken").value.trim();
-      const response = await fetch("/v1/devices?limit=200", {
+      const deviceId = byId("deviceId").value.trim();
+      const anonUserId = byId("anonUserId").value.trim();
+      const status = byId("deviceStatus").value.trim();
+      const params = new URLSearchParams({ limit: "200" });
+      if (deviceId) params.set("deviceId", deviceId);
+      if (anonUserId) params.set("anonUserId", anonUserId);
+      if (status === "active" || status === "revoked") params.set("status", status);
+      const response = await fetch("/v1/devices?" + params.toString(), {
         headers: {
           "X-TS-Admin-Token": adminToken,
         },
@@ -966,6 +1021,7 @@ function hubAdminHtml(): string {
           body: JSON.stringify({
             inviteToken: inviteToken,
             deviceId: deviceId || undefined,
+            anonUserId: byId("anonUserId").value.trim() || undefined,
             label: label || undefined,
           }),
         });
@@ -1246,6 +1302,16 @@ function isRegisterPayload(input: unknown): input is RegisterPayload {
   const candidate = input as Record<string, unknown>;
   if (typeof candidate.inviteToken !== "string" || candidate.inviteToken.trim().length === 0) return false;
   if (candidate.deviceId !== undefined && typeof candidate.deviceId !== "string") return false;
+  if (candidate.anonUserId !== undefined && typeof candidate.anonUserId !== "string") return false;
+  if (candidate.label !== undefined && typeof candidate.label !== "string") return false;
+  return true;
+}
+
+function isBootstrapPayload(input: unknown): input is BootstrapPayload {
+  if (typeof input !== "object" || input === null) return false;
+  const candidate = input as Record<string, unknown>;
+  if (candidate.deviceId !== undefined && typeof candidate.deviceId !== "string") return false;
+  if (candidate.anonUserId !== undefined && typeof candidate.anonUserId !== "string") return false;
   if (candidate.label !== undefined && typeof candidate.label !== "string") return false;
   return true;
 }
@@ -1585,11 +1651,33 @@ export function startHubServer(requestedPort?: number, options: HubServerOptions
           if (parsedBody.inviteToken !== inviteToken) return err(403, "Invalid invite token");
 
           const deviceId = parsedBody.deviceId?.trim() || randomDeviceId();
+          const anonUserId = parsedBody.anonUserId?.trim() || deviceId;
           const label = parsedBody.label?.trim() || null;
-          const device = registerHubDevice(db, deviceId, label);
+          const device = registerHubDevice(db, deviceId, label, anonUserId);
 
           return json({
             deviceId: device.deviceId,
+            anonUserId: device.anonUserId,
+            signingKey: device.signingKey,
+            status: device.status,
+          });
+        },
+        "/v1/devices/bootstrap": async req => {
+          if (req.method === "OPTIONS") return preflight();
+          if (req.method !== "POST") return err(405, "Method Not Allowed");
+
+          const parsedBody = await parseJsonBody(req);
+          if (parsedBody instanceof Response) return parsedBody;
+          if (!isBootstrapPayload(parsedBody)) return err(400, "Invalid bootstrap payload");
+
+          const deviceId = parsedBody.deviceId?.trim() || randomDeviceId();
+          const anonUserId = parsedBody.anonUserId?.trim() || deviceId;
+          const label = parsedBody.label?.trim() || null;
+          const device = registerHubDevice(db, deviceId, label, anonUserId);
+
+          return json({
+            deviceId: device.deviceId,
+            anonUserId: device.anonUserId,
             signingKey: device.signingKey,
             status: device.status,
           });
@@ -1603,9 +1691,14 @@ export function startHubServer(requestedPort?: number, options: HubServerOptions
 
           const url = new URL(req.url);
           const { limit } = parseRange(url);
+          const statusParam = url.searchParams.get("status")?.trim();
+          const status = statusParam === "active" || statusParam === "revoked" ? statusParam : undefined;
+          const deviceId = url.searchParams.get("deviceId")?.trim() || undefined;
+          const anonUserId = url.searchParams.get("anonUserId")?.trim() || undefined;
           return json(
-            listHubDevices(db, limit).map(device => ({
+            listHubDevices(db, limit, { status, deviceId, anonUserId }).map(device => ({
               deviceId: device.deviceId,
+              anonUserId: device.anonUserId,
               label: device.label,
               status: device.status,
               createdAt: device.createdAt,

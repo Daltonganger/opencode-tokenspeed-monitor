@@ -44,6 +44,7 @@ describe("hub server", () => {
     const devices = await devicesRes.json();
     expect(Array.isArray(devices)).toBe(true);
     expect(devices[0]?.deviceId).toBe("dev_a");
+    expect(typeof devices[0]?.anonUserId).toBe("string");
 
     const body = {
       schemaVersion: 1,
@@ -184,6 +185,83 @@ describe("hub server", () => {
     expect(exportJson.providers.length).toBe(1);
     expect(exportJson.providers[0]?.providerId).toBe("openai");
     expect(Array.isArray(exportJson.timeseries.tokens)).toBe(true);
+
+    const bootstrapRes = await fetch(`${server.url}v1/devices/bootstrap`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        deviceId: "dev_boot",
+        anonUserId: "usr_person_1",
+        label: "Bootstrap Laptop",
+      }),
+    });
+    expect(bootstrapRes.status).toBe(200);
+    const boot = await bootstrapRes.json();
+    expect(boot.deviceId).toBe("dev_boot");
+    expect(boot.anonUserId).toBe("usr_person_1");
+
+    const bootBody = {
+      schemaVersion: 1,
+      deviceId: "dev_boot",
+      buckets: [
+        {
+          bucketStart: 1_700_000_300,
+          bucketEnd: 1_700_000_599,
+          anonProjectId: "anon_project_boot",
+          providerId: "openai",
+          modelId: "gpt-5.3-codex",
+          requestCount: 4,
+          inputTokens: 400,
+          outputTokens: 120,
+          reasoningTokens: 30,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+          totalCost: 0.22,
+          avgOutputTps: 35,
+          minOutputTps: 31,
+          maxOutputTps: 39,
+        },
+      ],
+    };
+    const bootRaw = JSON.stringify(bootBody);
+    const bootTs = Math.floor(Date.now() / 1000).toString();
+    const bootNonce = randomBytes(12).toString("hex");
+    const bootSig = signPayload(bootRaw, bootTs, bootNonce, boot.signingKey);
+    const bootIngestRes = await fetch(`${server.url}v1/ingest/buckets`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-TS-Device-ID": "dev_boot",
+        "X-TS-Timestamp": bootTs,
+        "X-TS-Nonce": bootNonce,
+        "X-TS-Signature": bootSig,
+      },
+      body: bootRaw,
+    });
+    expect(bootIngestRes.status).toBe(200);
+
+    const userFilterSummaryRes = await fetch(`${server.url}v1/dashboard/summary?anonUserId=usr_person_1`);
+    expect(userFilterSummaryRes.status).toBe(200);
+    const userFilterSummary = await userFilterSummaryRes.json();
+    expect(userFilterSummary.requestCount).toBe(4);
+    expect(userFilterSummary.totalInputTokens).toBe(400);
+
+    const deviceFilterSummaryRes = await fetch(`${server.url}v1/dashboard/summary?deviceId=dev_boot`);
+    expect(deviceFilterSummaryRes.status).toBe(200);
+    const deviceFilterSummary = await deviceFilterSummaryRes.json();
+    expect(deviceFilterSummary.requestCount).toBe(4);
+
+    const filteredDevicesRes = await fetch(`${server.url}v1/devices?anonUserId=usr_person_1`, {
+      headers: {
+        "X-TS-Admin-Token": "admin-token",
+      },
+    });
+    expect(filteredDevicesRes.status).toBe(200);
+    const filteredDevices = await filteredDevicesRes.json();
+    expect(filteredDevices.length).toBe(1);
+    expect(filteredDevices[0]?.deviceId).toBe("dev_boot");
 
     const dashboardRes = await fetch(server.url);
     expect(dashboardRes.status).toBe(200);

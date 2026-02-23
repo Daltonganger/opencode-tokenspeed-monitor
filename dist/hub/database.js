@@ -47,6 +47,7 @@ export function runHubMigrations(db) {
     db.exec(`
     CREATE TABLE IF NOT EXISTS hub_devices (
       id TEXT PRIMARY KEY,
+      anon_user_id TEXT NOT NULL DEFAULT '',
       label TEXT,
       status TEXT NOT NULL DEFAULT 'active',
       signing_key TEXT NOT NULL,
@@ -69,11 +70,20 @@ export function runHubMigrations(db) {
     db.exec("CREATE INDEX IF NOT EXISTS idx_hub_buckets_provider_model ON hub_buckets(provider_id, model_id);");
     db.exec("CREATE INDEX IF NOT EXISTS idx_hub_buckets_project ON hub_buckets(anon_project_id);");
     db.exec("CREATE INDEX IF NOT EXISTS idx_hub_devices_status ON hub_devices(status);");
+    db.exec("CREATE INDEX IF NOT EXISTS idx_hub_buckets_device ON hub_buckets(device_id);");
+    db.exec("CREATE INDEX IF NOT EXISTS idx_hub_devices_anon_user_id ON hub_devices(anon_user_id);");
     db.exec("CREATE INDEX IF NOT EXISTS idx_hub_nonces_expiry ON hub_nonces(expires_at);");
+    try {
+        db.exec("ALTER TABLE hub_devices ADD COLUMN anon_user_id TEXT NOT NULL DEFAULT '';");
+    }
+    catch {
+    }
+    db.exec("UPDATE hub_devices SET anon_user_id = id WHERE anon_user_id = '';");
 }
 function mapHubDevice(row) {
     return {
         deviceId: row.id,
+        anonUserId: row.anon_user_id,
         label: row.label,
         status: row.status === "revoked" ? "revoked" : "active",
         signingKey: row.signing_key,
@@ -87,34 +97,39 @@ export function getHubDevice(db, deviceID) {
     const row = db
         .query(`SELECT
          id, label, status, signing_key, created_at, updated_at, last_seen, revoked_at
+         , anon_user_id
        FROM hub_devices
        WHERE id = $id
        LIMIT 1;`)
         .get({ id: deviceID });
     return row ? mapHubDevice(row) : null;
 }
-export function registerHubDevice(db, deviceID, label) {
+export function registerHubDevice(db, deviceID, label, anonUserID) {
     const existing = getHubDevice(db, deviceID);
     const now = Math.floor(Date.now() / 1000);
+    const normalizedAnonUserID = anonUserID?.trim() || deviceID;
     if (existing && existing.status === "active") {
         db.query(`UPDATE hub_devices
        SET label = COALESCE($label, label),
+           anon_user_id = CASE WHEN $anon_user_id = '' THEN anon_user_id ELSE $anon_user_id END,
            updated_at = $now
-       WHERE id = $id;`).run({ id: deviceID, label: label ?? null, now });
+        WHERE id = $id;`).run({ id: deviceID, label: label ?? null, anon_user_id: normalizedAnonUserID, now });
         const fresh = getHubDevice(db, deviceID);
         if (fresh)
             return fresh;
     }
     const signingKey = randomBytes(32).toString("hex");
-    db.query(`INSERT INTO hub_devices (id, label, status, signing_key, created_at, updated_at, revoked_at)
-     VALUES ($id, $label, 'active', $signing_key, $now, $now, NULL)
+    db.query(`INSERT INTO hub_devices (id, anon_user_id, label, status, signing_key, created_at, updated_at, revoked_at)
+     VALUES ($id, $anon_user_id, $label, 'active', $signing_key, $now, $now, NULL)
      ON CONFLICT(id) DO UPDATE SET
+       anon_user_id = CASE WHEN excluded.anon_user_id = '' THEN hub_devices.anon_user_id ELSE excluded.anon_user_id END,
        label = COALESCE(excluded.label, hub_devices.label),
        status = 'active',
        signing_key = excluded.signing_key,
        updated_at = excluded.updated_at,
        revoked_at = NULL;`).run({
         id: deviceID,
+        anon_user_id: normalizedAnonUserID,
         label: label ?? null,
         signing_key: signingKey,
         now,
@@ -175,15 +190,21 @@ export function bulkSetHubDevicesStatus(db, deviceIDs, status) {
     tx(uniqueIDs);
     return { updated, missing };
 }
-export function listHubDevices(db, limit = 200) {
+export function listHubDevices(db, limit = 200, filters = {}) {
     const safeLimit = Math.max(1, Math.min(limit, 1000));
+    const deviceId = filters.deviceId?.trim() || null;
+    const anonUserId = filters.anonUserId?.trim() || null;
+    const status = filters.status ?? null;
     const rows = db
         .query(`SELECT
-         id, label, status, signing_key, created_at, updated_at, last_seen, revoked_at
+         id, anon_user_id, label, status, signing_key, created_at, updated_at, last_seen, revoked_at
        FROM hub_devices
+       WHERE ($device_id IS NULL OR id = $device_id)
+         AND ($anon_user_id IS NULL OR anon_user_id = $anon_user_id)
+         AND ($status IS NULL OR status = $status)
        ORDER BY updated_at DESC
-       LIMIT $limit;`)
-        .all({ limit: safeLimit });
+        LIMIT $limit;`)
+        .all({ limit: safeLimit, device_id: deviceId, anon_user_id: anonUserId, status });
     return rows.map(mapHubDevice);
 }
 export function touchHubDeviceSeen(db, deviceID, seenAt) {
@@ -283,10 +304,14 @@ function filterParams(filters = {}) {
     const anonProjectId = filters.anonProjectId?.trim();
     const providerId = filters.providerId?.trim();
     const modelId = filters.modelId?.trim();
+    const deviceId = filters.deviceId?.trim();
+    const anonUserId = filters.anonUserId?.trim();
     return {
         anon_project_id: anonProjectId || null,
         provider_id: providerId || null,
         model_id: modelId || null,
+        device_id: deviceId || null,
+        anon_user_id: anonUserId || null,
     };
 }
 export function getHubSummary(db, from, to, filters = {}) {
@@ -302,11 +327,13 @@ export function getHubSummary(db, from, to, filters = {}) {
          COALESCE(SUM(cache_write_tokens), 0) AS total_cache_write_tokens,
          COALESCE(SUM(total_cost), 0) AS total_cost
        FROM hub_buckets
-       WHERE bucket_end >= $from
-         AND bucket_start <= $to
-         AND ($anon_project_id IS NULL OR anon_project_id = $anon_project_id)
-         AND ($provider_id IS NULL OR provider_id = $provider_id)
-         AND ($model_id IS NULL OR model_id = $model_id);`)
+        WHERE bucket_end >= $from
+          AND bucket_start <= $to
+          AND ($anon_project_id IS NULL OR anon_project_id = $anon_project_id)
+          AND ($provider_id IS NULL OR provider_id = $provider_id)
+          AND ($model_id IS NULL OR model_id = $model_id)
+          AND ($device_id IS NULL OR device_id = $device_id)
+          AND ($anon_user_id IS NULL OR device_id IN (SELECT id FROM hub_devices WHERE anon_user_id = $anon_user_id));`)
         .get(params);
     return {
         requestCount: row?.request_count ?? 0,
@@ -334,12 +361,14 @@ export function getHubModels(db, from, to, limit = 100, filters = {}) {
          MIN(min_output_tps) AS min_output_tps,
          MAX(max_output_tps) AS max_output_tps
        FROM hub_buckets
-       WHERE bucket_end >= $from
-         AND bucket_start <= $to
-         AND ($anon_project_id IS NULL OR anon_project_id = $anon_project_id)
-         AND ($provider_id IS NULL OR provider_id = $provider_id)
-         AND ($model_id IS NULL OR model_id = $model_id)
-       GROUP BY model_id, provider_id
+        WHERE bucket_end >= $from
+          AND bucket_start <= $to
+          AND ($anon_project_id IS NULL OR anon_project_id = $anon_project_id)
+          AND ($provider_id IS NULL OR provider_id = $provider_id)
+          AND ($model_id IS NULL OR model_id = $model_id)
+          AND ($device_id IS NULL OR device_id = $device_id)
+          AND ($anon_user_id IS NULL OR device_id IN (SELECT id FROM hub_devices WHERE anon_user_id = $anon_user_id))
+        GROUP BY model_id, provider_id
        ORDER BY request_count DESC
        LIMIT $limit;`)
         .all(params);
@@ -368,12 +397,14 @@ export function getHubProjects(db, from, to, limit = 100, filters = {}) {
          COALESCE(SUM(total_cost), 0) AS total_cost,
          MAX(bucket_end) AS last_bucket_end
        FROM hub_buckets
-       WHERE bucket_end >= $from
-         AND bucket_start <= $to
-         AND ($anon_project_id IS NULL OR anon_project_id = $anon_project_id)
-         AND ($provider_id IS NULL OR provider_id = $provider_id)
-         AND ($model_id IS NULL OR model_id = $model_id)
-       GROUP BY anon_project_id
+        WHERE bucket_end >= $from
+          AND bucket_start <= $to
+          AND ($anon_project_id IS NULL OR anon_project_id = $anon_project_id)
+          AND ($provider_id IS NULL OR provider_id = $provider_id)
+          AND ($model_id IS NULL OR model_id = $model_id)
+          AND ($device_id IS NULL OR device_id = $device_id)
+          AND ($anon_user_id IS NULL OR device_id IN (SELECT id FROM hub_devices WHERE anon_user_id = $anon_user_id))
+        GROUP BY anon_project_id
        ORDER BY request_count DESC
        LIMIT $limit;`)
         .all(params);
@@ -401,12 +432,14 @@ export function getHubProviders(db, from, to, limit = 100, filters = {}) {
          MIN(min_output_tps) AS min_output_tps,
          MAX(max_output_tps) AS max_output_tps
        FROM hub_buckets
-       WHERE bucket_end >= $from
-         AND bucket_start <= $to
-         AND ($anon_project_id IS NULL OR anon_project_id = $anon_project_id)
-         AND ($provider_id IS NULL OR provider_id = $provider_id)
-         AND ($model_id IS NULL OR model_id = $model_id)
-       GROUP BY provider_id
+        WHERE bucket_end >= $from
+          AND bucket_start <= $to
+          AND ($anon_project_id IS NULL OR anon_project_id = $anon_project_id)
+          AND ($provider_id IS NULL OR provider_id = $provider_id)
+          AND ($model_id IS NULL OR model_id = $model_id)
+          AND ($device_id IS NULL OR device_id = $device_id)
+          AND ($anon_user_id IS NULL OR device_id IN (SELECT id FROM hub_devices WHERE anon_user_id = $anon_user_id))
+        GROUP BY provider_id
        ORDER BY request_count DESC
        LIMIT $limit;`)
         .all(params);
@@ -439,12 +472,14 @@ export function getHubTimeseries(db, metric, groupBy, from, to, limit = 200, fil
          ${valueExpr} AS value,
          COALESCE(SUM(request_count), 0) AS request_count
        FROM hub_buckets
-       WHERE bucket_end >= $from
-         AND bucket_start <= $to
-         AND ($anon_project_id IS NULL OR anon_project_id = $anon_project_id)
-         AND ($provider_id IS NULL OR provider_id = $provider_id)
-         AND ($model_id IS NULL OR model_id = $model_id)
-       GROUP BY ts
+        WHERE bucket_end >= $from
+          AND bucket_start <= $to
+          AND ($anon_project_id IS NULL OR anon_project_id = $anon_project_id)
+          AND ($provider_id IS NULL OR provider_id = $provider_id)
+          AND ($model_id IS NULL OR model_id = $model_id)
+          AND ($device_id IS NULL OR device_id = $device_id)
+          AND ($anon_user_id IS NULL OR device_id IN (SELECT id FROM hub_devices WHERE anon_user_id = $anon_user_id))
+        GROUP BY ts
        ORDER BY ts DESC
        LIMIT $limit;`)
         .all(params);

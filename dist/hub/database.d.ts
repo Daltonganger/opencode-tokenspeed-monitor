@@ -65,9 +65,12 @@ export interface HubDashboardFilters {
     anonProjectId?: string;
     providerId?: string;
     modelId?: string;
+    deviceId?: string;
+    anonUserId?: string;
 }
 export interface HubDeviceRecord {
     deviceId: string;
+    anonUserId: string;
     label: string | null;
     status: "active" | "revoked";
     signingKey: string;
@@ -79,14 +82,19 @@ export interface HubDeviceRecord {
 export declare function openHubDatabase(dbPath?: string): Database;
 export declare function runHubMigrations(db: Database): void;
 export declare function getHubDevice(db: Database, deviceID: string): HubDeviceRecord | null;
-export declare function registerHubDevice(db: Database, deviceID: string, label?: string | null): HubDeviceRecord;
+export declare function registerHubDevice(db: Database, deviceID: string, label?: string | null, anonUserID?: string): HubDeviceRecord;
 export declare function revokeHubDevice(db: Database, deviceID: string): boolean;
 export declare function activateHubDevice(db: Database, deviceID: string): boolean;
 export declare function bulkSetHubDevicesStatus(db: Database, deviceIDs: string[], status: "active" | "revoked"): {
     updated: string[];
     missing: string[];
 };
-export declare function listHubDevices(db: Database, limit?: number): HubDeviceRecord[];
+export type HubDeviceListFilters = {
+    deviceId?: string;
+    anonUserId?: string;
+    status?: "active" | "revoked";
+};
+export declare function listHubDevices(db: Database, limit?: number, filters?: HubDeviceListFilters): HubDeviceRecord[];
 export declare function touchHubDeviceSeen(db: Database, deviceID: string, seenAt: number): void;
 export declare function upsertHubBuckets(db: Database, deviceID: string, buckets: HubBucketInput[]): void;
 export declare function cleanupExpiredNonces(db: Database, nowSec: number): void;

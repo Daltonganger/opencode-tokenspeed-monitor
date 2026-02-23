@@ -1,6 +1,6 @@
 import { createHmac, randomBytes } from "node:crypto";
 import type { Database } from "bun:sqlite";
-import { getAnonDeviceID } from "../privacy/anon";
+import { getAnonDeviceID, getAnonUserID } from "../privacy/anon";
 import { loadHubCredential, saveHubCredential } from "./credentials";
 import {
   getPendingUploadBuckets,
@@ -23,6 +23,7 @@ type UploadDispatcherOptions = {
 
 type RegisterResponse = {
   deviceId: string;
+  anonUserId?: string;
   signingKey: string;
   status: string;
 };
@@ -40,6 +41,7 @@ async function registerDevice(
   hubURL: string,
   inviteToken: string,
   desiredDeviceID: string,
+  anonUserID: string,
 ): Promise<RegisterResponse> {
   const endpoint = `${hubURL.replace(/\/$/, "")}/v1/devices/register`;
   const response = await fetch(endpoint, {
@@ -49,6 +51,7 @@ async function registerDevice(
     },
     body: JSON.stringify({
       deviceId: desiredDeviceID,
+      anonUserId: anonUserID,
       inviteToken,
       label: process.env.TS_HUB_DEVICE_LABEL?.trim() || undefined,
     }),
@@ -125,9 +128,54 @@ async function uploadBucket(
   });
 }
 
+async function bootstrapDevice(
+  hubURL: string,
+  desiredDeviceID: string,
+  anonUserID: string,
+): Promise<RegisterResponse> {
+  const endpoint = `${hubURL.replace(/\/$/, "")}/v1/devices/bootstrap`;
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      deviceId: desiredDeviceID,
+      anonUserId: anonUserID,
+      label: process.env.TS_HUB_DEVICE_LABEL?.trim() || undefined,
+    }),
+  });
+
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(`bootstrap failed: HTTP ${response.status}: ${message}`);
+  }
+
+  const body = (await response.json()) as unknown;
+  if (
+    typeof body !== "object" ||
+    body === null ||
+    typeof (body as { deviceId?: unknown }).deviceId !== "string" ||
+    typeof (body as { signingKey?: unknown }).signingKey !== "string"
+  ) {
+    throw new Error("bootstrap failed: invalid response schema");
+  }
+
+  return {
+    deviceId: (body as { deviceId: string }).deviceId,
+    anonUserId:
+      typeof (body as { anonUserId?: unknown }).anonUserId === "string"
+        ? (body as { anonUserId: string }).anonUserId
+        : undefined,
+    signingKey: (body as { signingKey: string }).signingKey,
+    status: typeof (body as { status?: unknown }).status === "string" ? (body as { status: string }).status : "unknown",
+  };
+}
+
 export function startUploadDispatcher(options: UploadDispatcherOptions): UploadDispatcherHandle {
   const intervalSeconds = Math.max(5, options.intervalSeconds ?? 30);
   let deviceID = process.env.TS_HUB_DEVICE_ID?.trim() || getAnonDeviceID();
+  const anonUserID = process.env.TS_HUB_ANON_USER_ID?.trim() || getAnonUserID();
   let signingKey = process.env.TS_HUB_SIGNING_KEY?.trim() || "";
   const inviteToken = process.env.TS_HUB_INVITE_TOKEN?.trim() || "";
   let nextRegisterAttemptAt = 0;
@@ -148,18 +196,19 @@ export function startUploadDispatcher(options: UploadDispatcherOptions): UploadD
 
   const ensureCredentials = async (): Promise<boolean> => {
     if (signingKey) return true;
-    if (!inviteToken) return false;
 
     const now = Date.now();
     if (nextRegisterAttemptAt > now) return false;
 
     try {
-      const registered = await registerDevice(options.hubURL, inviteToken, deviceID);
+      const registered = inviteToken
+        ? await registerDevice(options.hubURL, inviteToken, deviceID, anonUserID)
+        : await bootstrapDevice(options.hubURL, deviceID, anonUserID);
       deviceID = registered.deviceId;
       signingKey = registered.signingKey;
       saveHubCredential(options.hubURL, deviceID, signingKey);
       nextRegisterAttemptAt = 0;
-      await log(`TokenSpeed upload device registered: ${deviceID}`);
+      await log(`TokenSpeed upload device registered: ${deviceID}${registered.anonUserId ? ` (${registered.anonUserId})` : ""}`);
       return true;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
