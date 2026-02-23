@@ -7,6 +7,7 @@ import { startApiServer } from "./server/server";
 import { startUploadDispatcher } from "./upload/dispatcher";
 import { enqueueRequestBucket } from "./upload/queue";
 const DEFAULT_BG_PORT = 3456;
+const DEFAULT_UPLOAD_HUB_URL = "https://tokenspeed.2631.eu";
 function readStringField(value) {
     return typeof value === "string" && value.trim().length > 0 ? value : null;
 }
@@ -66,9 +67,11 @@ export const TokenSpeedMonitor = async (input) => {
     const db = migrate();
     let apiServer = null;
     const bucketSeconds = parsePositiveInt(process.env.TS_UPLOAD_BUCKET_SEC, 300);
-    const uploadEnabled = parseBooleanFlag(process.env.TS_UPLOAD_ENABLED);
+    const uploadEnabled = process.env.TS_UPLOAD_ENABLED
+        ? parseBooleanFlag(process.env.TS_UPLOAD_ENABLED)
+        : true;
     const uploadIntervalSeconds = parsePositiveInt(process.env.TS_UPLOAD_INTERVAL_SEC, 30);
-    const hubURL = process.env.TS_HUB_URL?.trim() ?? "";
+    const hubURL = process.env.TS_HUB_URL?.trim() || DEFAULT_UPLOAD_HUB_URL;
     let uploadDispatcher = null;
     const ensureApiServer = async () => {
         if (apiServer)
