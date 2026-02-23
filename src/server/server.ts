@@ -1082,6 +1082,8 @@ function dashboardHtml(): string {
               fill: true,
               tension: 0.35,
               pointRadius: 0,
+              pointHitRadius: 18,
+              pointHoverRadius: 4,
               borderWidth: 2,
             },
             {
@@ -1092,6 +1094,8 @@ function dashboardHtml(): string {
               fill: true,
               tension: 0.35,
               pointRadius: 0,
+              pointHitRadius: 18,
+              pointHoverRadius: 4,
               borderWidth: 2,
             },
             {
@@ -1102,6 +1106,8 @@ function dashboardHtml(): string {
               fill: true,
               tension: 0.35,
               pointRadius: 0,
+              pointHitRadius: 18,
+              pointHoverRadius: 4,
               borderWidth: 2,
             },
           ],
@@ -1109,8 +1115,26 @@ function dashboardHtml(): string {
         options: {
           maintainAspectRatio: false,
           responsive: true,
+          interaction: {
+            mode: "index",
+            intersect: false,
+          },
           plugins: {
             legend: { labels: { color: "#9bacd4" } },
+            tooltip: {
+              enabled: true,
+              mode: "index",
+              intersect: false,
+              callbacks: {
+                label: context => {
+                  const label = context.dataset.label || "Value";
+                  const value = Number(context.parsed?.y ?? 0);
+                  if (label === "Cost") return label + ": $" + value.toFixed(4);
+                  if (label === "Avg TPS") return label + ": " + value.toFixed(2);
+                  return label + ": " + Math.round(value).toLocaleString();
+                },
+              },
+            },
           },
           scales: {
             x: { ticks: { color: "#9bacd4" }, grid: { color: "rgba(126, 155, 255, 0.15)" } },

@@ -1148,14 +1148,34 @@ function hubDashboardHtml(): string {
         data: {
           labels: ["-"],
           datasets: [
-            { label: "Tokens", data: [0], borderColor: "#60d0ff", backgroundColor: "rgba(96, 208, 255, 0.18)", fill: true, tension: 0.35, pointRadius: 0 },
-            { label: "Cost", data: [0], borderColor: "#f7bf58", backgroundColor: "rgba(247, 191, 88, 0.13)", fill: true, tension: 0.35, pointRadius: 0 },
-            { label: "TPS", data: [0], borderColor: "#9a78ff", backgroundColor: "rgba(154, 120, 255, 0.12)", fill: true, tension: 0.35, pointRadius: 0 },
+            { label: "Tokens", data: [0], borderColor: "#60d0ff", backgroundColor: "rgba(96, 208, 255, 0.18)", fill: true, tension: 0.35, pointRadius: 0, pointHitRadius: 18, pointHoverRadius: 4 },
+            { label: "Cost", data: [0], borderColor: "#f7bf58", backgroundColor: "rgba(247, 191, 88, 0.13)", fill: true, tension: 0.35, pointRadius: 0, pointHitRadius: 18, pointHoverRadius: 4 },
+            { label: "TPS", data: [0], borderColor: "#9a78ff", backgroundColor: "rgba(154, 120, 255, 0.12)", fill: true, tension: 0.35, pointRadius: 0, pointHitRadius: 18, pointHoverRadius: 4 },
           ],
         },
         options: {
           maintainAspectRatio: false,
-          plugins: { legend: { labels: { color: "#9fafd7" } } },
+          interaction: {
+            mode: "index",
+            intersect: false,
+          },
+          plugins: {
+            legend: { labels: { color: "#9fafd7" } },
+            tooltip: {
+              enabled: true,
+              mode: "index",
+              intersect: false,
+              callbacks: {
+                label: context => {
+                  const label = context.dataset.label || "Value";
+                  const value = Number(context.parsed?.y ?? 0);
+                  if (label === "Cost") return label + ": $" + value.toFixed(4);
+                  if (label === "TPS") return label + ": " + value.toFixed(2);
+                  return label + ": " + Math.round(value).toLocaleString();
+                },
+              },
+            },
+          },
           scales: {
             x: { ticks: { color: "#9fafd7" }, grid: { color: "rgba(123, 152, 255, 0.15)" } },
             y: { ticks: { color: "#9fafd7" }, grid: { color: "rgba(123, 152, 255, 0.15)" } },
