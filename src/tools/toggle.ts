@@ -1,9 +1,11 @@
-import type { PluginInput } from "@opencode-ai/plugin";
+import type { PluginInput, ToolDefinition } from "@opencode-ai/plugin";
 import { tool } from "@opencode-ai/plugin";
-import type { ToolDefinition } from "@opencode-ai/plugin";
 import type { PluginState } from "../types";
 
-export function createToggleTool(client: PluginInput["client"], state: PluginState): ToolDefinition {
+export function createToggleTool(
+  client: PluginInput["client"],
+  state: PluginState,
+): ToolDefinition {
   return tool({
     description: "Toggle TokenSpeed monitor on/off",
     args: {},

@@ -2,6 +2,12 @@
 
 TokenSpeed Monitor is an OpenCode plugin that measures token speed per request, stores metrics in SQLite, and exposes data over local and hub HTTP APIs.
 
+## Compatibility
+
+- Tested against `@opencode-ai/plugin` `1.2.x`
+- Package peer dependency: `@opencode-ai/plugin@^1.2.2`
+- This plugin uses stable core plugin APIs (`Plugin`, `PluginInput`, `tool`, `ToolDefinition`) and avoids experimental hooks
+
 - npm: https://www.npmjs.com/package/opencode-tokenspeed-monitor
 - GitHub: https://github.com/Daltonganger/opencode-tokenspeed-monitor
 
@@ -60,12 +66,12 @@ Then restart OpenCode.
 
 ### Option B: Install from GitHub
 
-Add this to your OpenCode config (`~/.config/opencode/opencode.json`):
+Add this to your OpenCode config (`~/.config/opencode/opencode.json`) using the latest release tag:
 
 ```json
 {
   "plugin": [
-    "github:Daltonganger/opencode-tokenspeed-monitor#v0.1.1"
+    "github:Daltonganger/opencode-tokenspeed-monitor#v0.1.8"
   ]
 }
 ```
@@ -86,7 +92,7 @@ bun run build
 ```json
 {
   "plugin": [
-    "/Users/rubenbeuker/.config/opencode/opencode-tokenspeed-monitor"
+    "/absolute/path/to/opencode-tokenspeed-monitor"
   ]
 }
 ```
@@ -153,9 +159,17 @@ curl -N --max-time 8 "http://localhost:${PORT}/api/live"
 ## Development
 
 ```bash
-bun test
+bun run lint
+bun run format
+bun run test
 bun run build
 ```
+
+## Quality automation
+
+- GitHub Actions runs lint, test, and build on pushes and pull requests
+- Dependabot checks Bun dependencies and GitHub Actions weekly
+- Run `npm run release:check` before publishing a new release
 
 ## Hub server (optional)
 
@@ -260,6 +274,8 @@ npm run release:check
 npm login
 npm publish --access public
 ```
+
+If you also want GitHub installs by tag to point at the same release, push the matching git tag as well.
 
 Release checklist: `RELEASE.md`
 

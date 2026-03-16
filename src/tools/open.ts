@@ -1,6 +1,5 @@
-import type { PluginInput } from "@opencode-ai/plugin";
+import type { PluginInput, ToolDefinition } from "@opencode-ai/plugin";
 import { tool } from "@opencode-ai/plugin";
-import type { ToolDefinition } from "@opencode-ai/plugin";
 import type { PluginState } from "../types";
 
 function platformOpenCommand(shell: PluginInput["$"], url: string) {
@@ -38,9 +37,7 @@ export function createOpenTool(
         body: {
           service: "tokenspeed-monitor",
           level: "info",
-          message: opened
-            ? `TokenSpeed page opened: ${url}`
-            : `TokenSpeed page URL: ${url}`,
+          message: opened ? `TokenSpeed page opened: ${url}` : `TokenSpeed page URL: ${url}`,
         },
       });
 

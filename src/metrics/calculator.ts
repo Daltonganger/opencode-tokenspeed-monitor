@@ -128,7 +128,7 @@ export function aggregateModelStats(items: RequestMetrics[]): ModelStats[] {
     const requestCount = records.length;
     const totalInputTokens = records.reduce((sum, r) => sum + r.inputTokens, 0);
     const totalOutputTokens = records.reduce((sum, r) => sum + r.outputTokens, 0);
-    const tpsValues = records.map(r => r.outputTps ?? 0).filter(v => v > 0);
+    const tpsValues = records.map((r) => r.outputTps ?? 0).filter((v) => v > 0);
     const lastSeen = records.reduce((max, r) => Math.max(max, r.completedAt ?? r.startedAt), 0);
 
     result.push({
@@ -136,7 +136,9 @@ export function aggregateModelStats(items: RequestMetrics[]): ModelStats[] {
       requestCount,
       totalInputTokens,
       totalOutputTokens,
-      avgOutputTps: tpsValues.length ? round(tpsValues.reduce((a, b) => a + b, 0) / tpsValues.length) : null,
+      avgOutputTps: tpsValues.length
+        ? round(tpsValues.reduce((a, b) => a + b, 0) / tpsValues.length)
+        : null,
       minOutputTps: tpsValues.length ? Math.min(...tpsValues) : null,
       maxOutputTps: tpsValues.length ? Math.max(...tpsValues) : null,
       lastSeen: lastSeen || null,
@@ -165,7 +167,7 @@ export function aggregateProviderStats(items: RequestMetrics[]): ProviderStats[]
     const totalInputTokens = records.reduce((sum, r) => sum + r.inputTokens, 0);
     const totalOutputTokens = records.reduce((sum, r) => sum + r.outputTokens, 0);
     const totalCost = records.reduce((sum, r) => sum + (r.cost ?? 0), 0);
-    const tpsValues = records.map(r => r.outputTps ?? 0).filter(v => v > 0);
+    const tpsValues = records.map((r) => r.outputTps ?? 0).filter((v) => v > 0);
     const lastSeen = records.reduce((max, r) => Math.max(max, r.completedAt ?? r.startedAt), 0);
 
     result.push({
@@ -173,7 +175,9 @@ export function aggregateProviderStats(items: RequestMetrics[]): ProviderStats[]
       requestCount,
       totalInputTokens,
       totalOutputTokens,
-      avgOutputTps: tpsValues.length ? round(tpsValues.reduce((a, b) => a + b, 0) / tpsValues.length) : null,
+      avgOutputTps: tpsValues.length
+        ? round(tpsValues.reduce((a, b) => a + b, 0) / tpsValues.length)
+        : null,
       minOutputTps: tpsValues.length ? Math.min(...tpsValues) : null,
       maxOutputTps: tpsValues.length ? Math.max(...tpsValues) : null,
       totalCost: round(totalCost, 6),

@@ -1,7 +1,7 @@
-import type { PluginInput, ToolDefinition } from "@opencode-ai/plugin";
 import type { Database } from "bun:sqlite";
+import type { PluginInput, ToolDefinition } from "@opencode-ai/plugin";
 import type { PluginState } from "../types";
-import { createBackgroundTool, type BackgroundToggleResult } from "./background";
+import { type BackgroundToggleResult, createBackgroundTool } from "./background";
 import { createHistoryTool } from "./history";
 import { createOpenTool } from "./open";
 import { createStatsTool } from "./stats";

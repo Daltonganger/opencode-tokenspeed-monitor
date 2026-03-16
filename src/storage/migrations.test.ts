@@ -1,7 +1,7 @@
 import { afterAll, afterEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
-import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { openDatabase, resolveDatabasePath, runMigrations } from "./migrations";
 
 const ORIGINAL_ENV = {
@@ -38,7 +38,9 @@ describe("migrations path resolution", () => {
     process.env.OPENCODE_HOME = join(temp, "opencode-home");
 
     const path = resolveDatabasePath();
-    expect(path).toBe(join(temp, "opencode-home", "tokenspeed-monitor", "tokenspeed-monitor.sqlite"));
+    expect(path).toBe(
+      join(temp, "opencode-home", "tokenspeed-monitor", "tokenspeed-monitor.sqlite"),
+    );
   });
 
   test("creates default database under resolved OpenCode path", () => {
@@ -56,7 +58,9 @@ describe("migrations path resolution", () => {
     expect(existsSync(expectedPath)).toBe(true);
 
     const queueInfo = db
-      .query<{ name: string }, []>("SELECT name FROM sqlite_master WHERE type='table' AND name='upload_queue';")
+      .query<{ name: string }, []>(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='upload_queue';",
+      )
       .get();
     expect(queueInfo?.name).toBe("upload_queue");
 

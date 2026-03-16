@@ -1,5 +1,5 @@
-import { createHmac, randomBytes } from "node:crypto";
 import type { Database } from "bun:sqlite";
+import { createHmac, randomBytes } from "node:crypto";
 import { getAnonDeviceID, getAnonUserID } from "../privacy/anon";
 import { loadHubCredential, saveHubCredential } from "./credentials";
 import {
@@ -28,7 +28,12 @@ type RegisterResponse = {
   status: string;
 };
 
-function computeSignature(payload: string, timestamp: string, nonce: string, signingKey: string): string {
+function computeSignature(
+  payload: string,
+  timestamp: string,
+  nonce: string,
+  signingKey: string,
+): string {
   const input = `${timestamp}.${nonce}.${payload}`;
   return createHmac("sha256", signingKey).update(input).digest("hex");
 }
@@ -75,7 +80,10 @@ async function registerDevice(
   return {
     deviceId: (body as { deviceId: string }).deviceId,
     signingKey: (body as { signingKey: string }).signingKey,
-    status: typeof (body as { status?: unknown }).status === "string" ? (body as { status: string }).status : "unknown",
+    status:
+      typeof (body as { status?: unknown }).status === "string"
+        ? (body as { status: string }).status
+        : "unknown",
   };
 }
 
@@ -168,7 +176,10 @@ async function bootstrapDevice(
         ? (body as { anonUserId: string }).anonUserId
         : undefined,
     signingKey: (body as { signingKey: string }).signingKey,
-    status: typeof (body as { status?: unknown }).status === "string" ? (body as { status: string }).status : "unknown",
+    status:
+      typeof (body as { status?: unknown }).status === "string"
+        ? (body as { status: string }).status
+        : "unknown",
   };
 }
 
@@ -208,7 +219,9 @@ export function startUploadDispatcher(options: UploadDispatcherOptions): UploadD
       signingKey = registered.signingKey;
       saveHubCredential(options.hubURL, deviceID, signingKey);
       nextRegisterAttemptAt = 0;
-      await log(`TokenSpeed upload device registered: ${deviceID}${registered.anonUserId ? ` (${registered.anonUserId})` : ""}`);
+      await log(
+        `TokenSpeed upload device registered: ${deviceID}${registered.anonUserId ? ` (${registered.anonUserId})` : ""}`,
+      );
       return true;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -251,7 +264,12 @@ export function startUploadDispatcher(options: UploadDispatcherOptions): UploadD
           }
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
-          markUploadBucketFailed(options.db, bucket.id, message, retryDelaySeconds(bucket.attemptCount));
+          markUploadBucketFailed(
+            options.db,
+            bucket.id,
+            message,
+            retryDelaySeconds(bucket.attemptCount),
+          );
         }
       }
     } finally {

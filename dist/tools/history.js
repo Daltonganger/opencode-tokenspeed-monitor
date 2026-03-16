@@ -4,7 +4,13 @@ export function createHistoryTool(db) {
     return tool({
         description: "Show recent TokenSpeed requests",
         args: {
-            limit: tool.schema.number().int().min(1).max(50).optional().describe("Number of rows to show (default 10)"),
+            limit: tool.schema
+                .number()
+                .int()
+                .min(1)
+                .max(50)
+                .optional()
+                .describe("Number of rows to show (default 10)"),
         },
         async execute(args) {
             const limit = args.limit ?? 10;

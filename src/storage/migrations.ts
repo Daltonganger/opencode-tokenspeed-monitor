@@ -1,7 +1,7 @@
+import { Database } from "bun:sqlite";
 import { copyFileSync, existsSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
-import { Database } from "bun:sqlite";
 
 export const LEGACY_DB_PATH = "./data/tokenspeed-monitor.sqlite";
 export const DEFAULT_DB_FILE = "tokenspeed-monitor.sqlite";
@@ -52,7 +52,7 @@ export function openDatabase(dbPath?: string): Database {
 
 function columnExists(db: Database, tableName: string, columnName: string): boolean {
   const rows = db.query<{ name: string }, []>(`PRAGMA table_info(${tableName});`).all();
-  return rows.some(row => row.name === columnName);
+  return rows.some((row) => row.name === columnName);
 }
 
 function ensureColumn(db: Database, tableName: string, columnName: string, sqlType: string): void {
@@ -160,7 +160,9 @@ export function runMigrations(db: Database): void {
   db.exec("CREATE INDEX IF NOT EXISTS idx_requests_started_at ON requests(started_at);");
   db.exec("CREATE INDEX IF NOT EXISTS idx_sessions_project_id ON sessions(project_id);");
   db.exec("CREATE INDEX IF NOT EXISTS idx_projects_last_seen ON projects(last_seen);");
-  db.exec("CREATE INDEX IF NOT EXISTS idx_upload_queue_pending ON upload_queue(status, next_attempt_at, bucket_start);");
+  db.exec(
+    "CREATE INDEX IF NOT EXISTS idx_upload_queue_pending ON upload_queue(status, next_attempt_at, bucket_start);",
+  );
 }
 
 export function migrate(dbPath?: string): Database {

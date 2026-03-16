@@ -186,7 +186,7 @@ export function getProjects(db, limit = 100) {
        ORDER BY COALESCE(last_seen, 0) DESC
        LIMIT $limit;`)
         .all({ limit: safeLimit });
-    return rows.map(row => ({
+    return rows.map((row) => ({
         projectID: row.project_id,
         name: row.name,
         rootPath: row.root_path,
@@ -206,7 +206,7 @@ export function getSessions(db, limit = 100) {
        ORDER BY COALESCE(last_activity, 0) DESC
        LIMIT $limit;`)
         .all({ limit: safeLimit });
-    return rows.map(row => ({
+    return rows.map((row) => ({
         id: row.id,
         startedAt: row.started_at,
         lastActivity: row.last_activity,

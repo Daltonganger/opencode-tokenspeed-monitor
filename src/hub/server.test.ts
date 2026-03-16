@@ -1,6 +1,6 @@
-import { createHmac, randomBytes } from "node:crypto";
-import { describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
+import { describe, expect, test } from "bun:test";
+import { createHmac, randomBytes } from "node:crypto";
 import { runHubMigrations } from "./database";
 import { startHubServer } from "./server";
 
@@ -136,9 +136,13 @@ describe("hub server", () => {
     expect(providersRes.status).toBe(200);
     const providers = await providersRes.json();
     expect(providers.length).toBe(2);
-    expect(providers.some((item: { providerId: string }) => item.providerId === "openai")).toBe(true);
+    expect(providers.some((item: { providerId: string }) => item.providerId === "openai")).toBe(
+      true,
+    );
 
-    const filteredProvidersRes = await fetch(`${server.url}v1/dashboard/providers?modelId=claude-sonnet`);
+    const filteredProvidersRes = await fetch(
+      `${server.url}v1/dashboard/providers?modelId=claude-sonnet`,
+    );
     expect(filteredProvidersRes.status).toBe(200);
     const filteredProviders = await filteredProvidersRes.json();
     expect(filteredProviders.length).toBe(1);
@@ -148,13 +152,17 @@ describe("hub server", () => {
     expect(projectsRes.status).toBe(200);
     const projects = await projectsRes.json();
     expect(projects.length).toBe(2);
-    const filteredProjectsRes = await fetch(`${server.url}v1/dashboard/projects?anonProjectId=anon_project_b`);
+    const filteredProjectsRes = await fetch(
+      `${server.url}v1/dashboard/projects?anonProjectId=anon_project_b`,
+    );
     expect(filteredProjectsRes.status).toBe(200);
     const filteredProjects = await filteredProjectsRes.json();
     expect(filteredProjects.length).toBe(1);
     expect(filteredProjects[0]?.anonProjectId).toBe("anon_project_b");
 
-    const timeseriesRes = await fetch(`${server.url}v1/dashboard/timeseries?metric=tokens&groupBy=hour&limit=10`);
+    const timeseriesRes = await fetch(
+      `${server.url}v1/dashboard/timeseries?metric=tokens&groupBy=hour&limit=10`,
+    );
     expect(timeseriesRes.status).toBe(200);
     const timeseries = await timeseriesRes.json();
     expect(Array.isArray(timeseries)).toBe(true);
@@ -176,7 +184,9 @@ describe("hub server", () => {
     expect(exportCsv.includes(",openai,")).toBe(true);
     expect(exportCsv.includes("anthropic")).toBe(false);
 
-    const exportJsonRes = await fetch(`${server.url}v1/dashboard/export.json?providerId=openai&groupBy=hour`);
+    const exportJsonRes = await fetch(
+      `${server.url}v1/dashboard/export.json?providerId=openai&groupBy=hour`,
+    );
     expect(exportJsonRes.status).toBe(200);
     const exportJson = await exportJsonRes.json();
     expect(exportJson.query.filters.providerId).toBe("openai");
@@ -242,13 +252,17 @@ describe("hub server", () => {
     });
     expect(bootIngestRes.status).toBe(200);
 
-    const userFilterSummaryRes = await fetch(`${server.url}v1/dashboard/summary?anonUserId=usr_person_1`);
+    const userFilterSummaryRes = await fetch(
+      `${server.url}v1/dashboard/summary?anonUserId=usr_person_1`,
+    );
     expect(userFilterSummaryRes.status).toBe(200);
     const userFilterSummary = await userFilterSummaryRes.json();
     expect(userFilterSummary.requestCount).toBe(4);
     expect(userFilterSummary.totalInputTokens).toBe(400);
 
-    const deviceFilterSummaryRes = await fetch(`${server.url}v1/dashboard/summary?deviceId=dev_boot`);
+    const deviceFilterSummaryRes = await fetch(
+      `${server.url}v1/dashboard/summary?deviceId=dev_boot`,
+    );
     expect(deviceFilterSummaryRes.status).toBe(200);
     const deviceFilterSummary = await deviceFilterSummaryRes.json();
     expect(deviceFilterSummary.requestCount).toBe(4);

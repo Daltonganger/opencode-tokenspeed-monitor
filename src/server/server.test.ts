@@ -1,5 +1,5 @@
-import { describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
+import { describe, expect, test } from "bun:test";
 import { saveRequest } from "../storage/database";
 import { runMigrations } from "../storage/migrations";
 import { startApiServer } from "./server";
@@ -70,7 +70,9 @@ describe("api server", () => {
     const filteredStats = await filteredStatsRes.json();
     expect(filteredStats.requestCount).toBe(1);
 
-    const filteredByProjectStatsRes = await fetch(`${server.url}api/stats?projectId=${encodeURIComponent("/tmp/project-b")}`);
+    const filteredByProjectStatsRes = await fetch(
+      `${server.url}api/stats?projectId=${encodeURIComponent("/tmp/project-b")}`,
+    );
     expect(filteredByProjectStatsRes.status).toBe(200);
     const filteredByProjectStats = await filteredByProjectStatsRes.json();
     expect(filteredByProjectStats.requestCount).toBe(1);
@@ -79,7 +81,9 @@ describe("api server", () => {
     expect(providersRes.status).toBe(200);
     const providers = await providersRes.json();
     expect(Array.isArray(providers)).toBe(true);
-    expect(providers.some((item: { providerID: string }) => item.providerID === "openai")).toBe(true);
+    expect(providers.some((item: { providerID: string }) => item.providerID === "openai")).toBe(
+      true,
+    );
 
     const filteredProvidersRes = await fetch(`${server.url}api/stats/providers?modelId=model-b`);
     expect(filteredProvidersRes.status).toBe(200);
@@ -126,7 +130,9 @@ describe("api server", () => {
     expect(filteredHistory.length).toBe(1);
     expect(filteredHistory[0]?.providerID).toBe("openai");
 
-    const projectHistoryRes = await fetch(`${server.url}api/history?projectId=${encodeURIComponent("/tmp/project-b")}&limit=10`);
+    const projectHistoryRes = await fetch(
+      `${server.url}api/history?projectId=${encodeURIComponent("/tmp/project-b")}&limit=10`,
+    );
     expect(projectHistoryRes.status).toBe(200);
     const projectHistory = await projectHistoryRes.json();
     expect(projectHistory.length).toBe(1);

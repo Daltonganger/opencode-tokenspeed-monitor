@@ -1,5 +1,5 @@
-import { describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
+import { describe, expect, test } from "bun:test";
 import type { RequestMetrics } from "../types";
 import {
   getProjects,

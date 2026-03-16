@@ -1,9 +1,9 @@
 import { MetricsCollector } from "./metrics/collector";
 import { getAnonProjectID } from "./privacy/anon";
-import { migrate } from "./storage/migrations";
-import { saveRequest } from "./storage/database";
-import { createTools } from "./tools";
 import { startApiServer } from "./server/server";
+import { saveRequest } from "./storage/database";
+import { migrate } from "./storage/migrations";
+import { createTools } from "./tools";
 import { startUploadDispatcher } from "./upload/dispatcher";
 import { enqueueRequestBucket } from "./upload/queue";
 const DEFAULT_BG_PORT = 3456;

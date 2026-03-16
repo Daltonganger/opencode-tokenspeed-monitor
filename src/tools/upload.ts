@@ -1,6 +1,6 @@
-import { tool } from "@opencode-ai/plugin";
-import type { ToolDefinition } from "@opencode-ai/plugin";
 import type { Database } from "bun:sqlite";
+import type { ToolDefinition } from "@opencode-ai/plugin";
+import { tool } from "@opencode-ai/plugin";
 import { getUploadQueueEntries, getUploadQueueStatus } from "../upload/queue";
 
 export type UploadInfoProvider = () => {
@@ -36,7 +36,10 @@ function formatQueueStatus(db: Database, getUploadInfo: UploadInfoProvider): str
   return lines.join("\n");
 }
 
-export function createUploadStatusTool(db: Database, getUploadInfo: UploadInfoProvider): ToolDefinition {
+export function createUploadStatusTool(
+  db: Database,
+  getUploadInfo: UploadInfoProvider,
+): ToolDefinition {
   return tool({
     description: "Show upload queue status and hub config",
     args: {},

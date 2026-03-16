@@ -1,7 +1,7 @@
-import { mkdirSync } from "node:fs";
-import { randomBytes } from "node:crypto";
-import { dirname, join, resolve } from "node:path";
 import { Database } from "bun:sqlite";
+import { randomBytes } from "node:crypto";
+import { mkdirSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { resolveOpenCodeHome } from "../storage/migrations";
 
 export interface HubBucketInput {
@@ -175,7 +175,9 @@ export function runHubMigrations(db: Database): void {
   `);
 
   db.exec("CREATE INDEX IF NOT EXISTS idx_hub_buckets_bucket_start ON hub_buckets(bucket_start);");
-  db.exec("CREATE INDEX IF NOT EXISTS idx_hub_buckets_provider_model ON hub_buckets(provider_id, model_id);");
+  db.exec(
+    "CREATE INDEX IF NOT EXISTS idx_hub_buckets_provider_model ON hub_buckets(provider_id, model_id);",
+  );
   db.exec("CREATE INDEX IF NOT EXISTS idx_hub_buckets_project ON hub_buckets(anon_project_id);");
   db.exec("CREATE INDEX IF NOT EXISTS idx_hub_devices_status ON hub_devices(status);");
   db.exec("CREATE INDEX IF NOT EXISTS idx_hub_buckets_device ON hub_buckets(device_id);");
@@ -184,8 +186,7 @@ export function runHubMigrations(db: Database): void {
 
   try {
     db.exec("ALTER TABLE hub_devices ADD COLUMN anon_user_id TEXT NOT NULL DEFAULT '';");
-  } catch {
-  }
+  } catch {}
 
   db.exec("UPDATE hub_devices SET anon_user_id = id WHERE anon_user_id = '';");
 }
@@ -292,26 +293,30 @@ export function registerHubDevice(
 
 export function revokeHubDevice(db: Database, deviceID: string): boolean {
   const now = Math.floor(Date.now() / 1000);
-  const result = db.query(
-    `UPDATE hub_devices
+  const result = db
+    .query(
+      `UPDATE hub_devices
      SET status = 'revoked',
          revoked_at = $now,
          updated_at = $now
      WHERE id = $id;`,
-  ).run({ id: deviceID, now });
+    )
+    .run({ id: deviceID, now });
 
   return result.changes > 0;
 }
 
 export function activateHubDevice(db: Database, deviceID: string): boolean {
   const now = Math.floor(Date.now() / 1000);
-  const result = db.query(
-    `UPDATE hub_devices
+  const result = db
+    .query(
+      `UPDATE hub_devices
      SET status = 'active',
          revoked_at = NULL,
          updated_at = $now
      WHERE id = $id;`,
-  ).run({ id: deviceID, now });
+    )
+    .run({ id: deviceID, now });
 
   return result.changes > 0;
 }
@@ -321,7 +326,7 @@ export function bulkSetHubDevicesStatus(
   deviceIDs: string[],
   status: "active" | "revoked",
 ): { updated: string[]; missing: string[] } {
-  const uniqueIDs = [...new Set(deviceIDs.map(id => id.trim()).filter(Boolean))];
+  const uniqueIDs = [...new Set(deviceIDs.map((id) => id.trim()).filter(Boolean))];
   if (uniqueIDs.length === 0) {
     return { updated: [], missing: [] };
   }
@@ -364,7 +369,11 @@ export type HubDeviceListFilters = {
   status?: "active" | "revoked";
 };
 
-export function listHubDevices(db: Database, limit = 200, filters: HubDeviceListFilters = {}): HubDeviceRecord[] {
+export function listHubDevices(
+  db: Database,
+  limit = 200,
+  filters: HubDeviceListFilters = {},
+): HubDeviceRecord[] {
   const safeLimit = Math.max(1, Math.min(limit, 1000));
   const deviceId = filters.deviceId?.trim() || null;
   const anonUserId = filters.anonUserId?.trim() || null;
@@ -382,7 +391,12 @@ export function listHubDevices(db: Database, limit = 200, filters: HubDeviceList
         last_seen: number | null;
         revoked_at: number | null;
       },
-      { limit: number; device_id: string | null; anon_user_id: string | null; status: string | null }
+      {
+        limit: number;
+        device_id: string | null;
+        anon_user_id: string | null;
+        status: string | null;
+      }
     >(
       `SELECT
          id, anon_user_id, label, status, signing_key, created_at, updated_at, last_seen, revoked_at
@@ -624,7 +638,7 @@ export function getHubModels(
     )
     .all(params);
 
-  return rows.map(row => ({
+  return rows.map((row) => ({
     modelId: row.model_id,
     providerId: row.provider_id,
     requestCount: row.request_count,
@@ -680,7 +694,7 @@ export function getHubProjects(
     )
     .all(params);
 
-  return rows.map(row => ({
+  return rows.map((row) => ({
     anonProjectId: row.anon_project_id,
     requestCount: row.request_count,
     totalInputTokens: row.total_input_tokens,
@@ -737,7 +751,7 @@ export function getHubProviders(
     )
     .all(params);
 
-  return rows.map(row => ({
+  return rows.map((row) => ({
     providerId: row.provider_id,
     requestCount: row.request_count,
     totalInputTokens: row.total_input_tokens,
@@ -760,7 +774,12 @@ export function getHubTimeseries(
 ): HubTimeseriesPoint[] {
   const safeLimit = Math.max(1, Math.min(limit, 2000));
   const range = rangeParams(from, to);
-  const params = { ...range, ...filterParams(filters), bucket_seconds: groupBy === "day" ? 86400 : 3600, limit: safeLimit };
+  const params = {
+    ...range,
+    ...filterParams(filters),
+    bucket_seconds: groupBy === "day" ? 86400 : 3600,
+    limit: safeLimit,
+  };
 
   const valueExpr =
     metric === "cost"
@@ -800,7 +819,7 @@ export function getHubTimeseries(
     .all(params);
 
   return rows
-    .map(row => ({
+    .map((row) => ({
       ts: row.ts,
       value: row.value,
       requestCount: row.request_count,

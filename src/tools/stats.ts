@@ -1,6 +1,6 @@
-import { tool } from "@opencode-ai/plugin";
-import type { ToolDefinition } from "@opencode-ai/plugin";
 import type { Database } from "bun:sqlite";
+import type { ToolDefinition } from "@opencode-ai/plugin";
+import { tool } from "@opencode-ai/plugin";
 import { getModelStats, getSessionStats } from "../storage/database";
 
 export function createStatsTool(db: Database): ToolDefinition {

@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { aggregateModelStats, aggregateProviderStats, outputTps, totalTps, withComputedSpeed } from "./calculator";
 import type { RequestMetrics } from "../types";
+import {
+  aggregateModelStats,
+  aggregateProviderStats,
+  outputTps,
+  totalTps,
+  withComputedSpeed,
+} from "./calculator";
 
 function baseMetrics(overrides: Partial<RequestMetrics> = {}): RequestMetrics {
   return {
@@ -36,13 +42,17 @@ describe("calculator", () => {
   test("aggregates per-model stats", () => {
     const items = [
       withComputedSpeed(baseMetrics({ id: "r1", messageID: "m1", modelID: "model-a" })),
-      withComputedSpeed(baseMetrics({ id: "r2", messageID: "m2", modelID: "model-a", outputTokens: 100 })),
-      withComputedSpeed(baseMetrics({ id: "r3", messageID: "m3", modelID: "model-b", outputTokens: 50 })),
+      withComputedSpeed(
+        baseMetrics({ id: "r2", messageID: "m2", modelID: "model-a", outputTokens: 100 }),
+      ),
+      withComputedSpeed(
+        baseMetrics({ id: "r3", messageID: "m3", modelID: "model-b", outputTokens: 50 }),
+      ),
     ];
 
     const stats = aggregateModelStats(items);
-    const modelA = stats.find(s => s.modelID === "model-a");
-    const modelB = stats.find(s => s.modelID === "model-b");
+    const modelA = stats.find((s) => s.modelID === "model-a");
+    const modelB = stats.find((s) => s.modelID === "model-b");
 
     expect(modelA?.requestCount).toBe(2);
     expect(modelA?.totalOutputTokens).toBe(300);
@@ -51,14 +61,20 @@ describe("calculator", () => {
 
   test("aggregates per-provider stats", () => {
     const items = [
-      withComputedSpeed(baseMetrics({ id: "r1", messageID: "m1", providerID: "openai", cost: 0.2 })),
-      withComputedSpeed(baseMetrics({ id: "r2", messageID: "m2", providerID: "openai", cost: 0.2 })),
-      withComputedSpeed(baseMetrics({ id: "r3", messageID: "m3", providerID: "anthropic", cost: 0.1 })),
+      withComputedSpeed(
+        baseMetrics({ id: "r1", messageID: "m1", providerID: "openai", cost: 0.2 }),
+      ),
+      withComputedSpeed(
+        baseMetrics({ id: "r2", messageID: "m2", providerID: "openai", cost: 0.2 }),
+      ),
+      withComputedSpeed(
+        baseMetrics({ id: "r3", messageID: "m3", providerID: "anthropic", cost: 0.1 }),
+      ),
     ];
 
     const stats = aggregateProviderStats(items);
-    const openai = stats.find(s => s.providerID === "openai");
-    const anthropic = stats.find(s => s.providerID === "anthropic");
+    const openai = stats.find((s) => s.providerID === "openai");
+    const anthropic = stats.find((s) => s.providerID === "anthropic");
 
     expect(openai?.requestCount).toBe(2);
     expect(openai?.totalCost).toBe(0.4);

@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import type { EventMessagePartUpdated, EventMessageUpdated, EventSessionIdle } from "@opencode-ai/sdk";
-import { MetricsCollector } from "./collector";
+import type {
+  EventMessagePartUpdated,
+  EventMessageUpdated,
+  EventSessionIdle,
+} from "@opencode-ai/sdk";
 import type { PluginState, RequestMetrics } from "../types";
+import { MetricsCollector } from "./collector";
 
 function baseState(): PluginState {
   return {
@@ -22,7 +26,7 @@ describe("collector", () => {
   test("correlates message and step-finish into finalized metrics on session idle", async () => {
     const state = baseState();
     const completed: RequestMetrics[] = [];
-    const collector = new MetricsCollector(state, m => {
+    const collector = new MetricsCollector(state, (m) => {
       completed.push(m);
     });
 

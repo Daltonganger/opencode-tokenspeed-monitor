@@ -13,11 +13,13 @@ function readStore() {
         return { credentials: [] };
     try {
         const parsed = JSON.parse(readFileSync(path, "utf8"));
-        if (typeof parsed === "object" && parsed !== null && Array.isArray(parsed.credentials)) {
+        if (typeof parsed === "object" &&
+            parsed !== null &&
+            Array.isArray(parsed.credentials)) {
             const credentials = parsed.credentials
-                .filter(item => typeof item === "object" && item !== null)
-                .map(item => item)
-                .filter(item => typeof item.hubURL === "string" &&
+                .filter((item) => typeof item === "object" && item !== null)
+                .map((item) => item)
+                .filter((item) => typeof item.hubURL === "string" &&
                 typeof item.deviceID === "string" &&
                 typeof item.signingKey === "string" &&
                 typeof item.updatedAt === "number");
@@ -38,12 +40,12 @@ export function loadHubCredential(hubURL, preferredDeviceID) {
     const normalized = normalizeHubURL(hubURL);
     const store = readStore();
     const matches = store.credentials
-        .filter(item => normalizeHubURL(item.hubURL) === normalized)
+        .filter((item) => normalizeHubURL(item.hubURL) === normalized)
         .sort((a, b) => b.updatedAt - a.updatedAt);
     if (matches.length === 0)
         return null;
     const preferred = preferredDeviceID
-        ? matches.find(item => item.deviceID === preferredDeviceID)
+        ? matches.find((item) => item.deviceID === preferredDeviceID)
         : null;
     const selected = preferred ?? matches[0] ?? null;
     if (!selected)
@@ -57,7 +59,7 @@ export function saveHubCredential(hubURL, deviceID, signingKey) {
     const normalized = normalizeHubURL(hubURL);
     const store = readStore();
     const updatedAt = Date.now();
-    const existingIndex = store.credentials.findIndex(item => normalizeHubURL(item.hubURL) === normalized && item.deviceID === deviceID);
+    const existingIndex = store.credentials.findIndex((item) => normalizeHubURL(item.hubURL) === normalized && item.deviceID === deviceID);
     const record = {
         hubURL: normalized,
         deviceID,

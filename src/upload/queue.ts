@@ -179,7 +179,7 @@ export function getPendingUploadBuckets(db: Database, limit = 20): UploadBucketP
     )
     .all(safeLimit);
 
-  return rows.map(row => ({
+  return rows.map((row) => ({
     id: row.id,
     bucketStart: row.bucket_start,
     bucketEnd: row.bucket_end,
@@ -242,7 +242,11 @@ export function getUploadQueueStatus(db: Database): UploadQueueStatus {
   };
 }
 
-export function getUploadQueueEntries(db: Database, limit = 100, status?: string): UploadQueueEntry[] {
+export function getUploadQueueEntries(
+  db: Database,
+  limit = 100,
+  status?: string,
+): UploadQueueEntry[] {
   const safeLimit = Math.max(1, Math.min(limit, 500));
   const normalizedStatus = status?.trim() || null;
   const rows = db
@@ -259,7 +263,7 @@ export function getUploadQueueEntries(db: Database, limit = 100, status?: string
     )
     .all({ limit: safeLimit, status: normalizedStatus });
 
-  return rows.map(row => ({
+  return rows.map((row) => ({
     id: row.id,
     bucketStart: row.bucket_start,
     bucketEnd: row.bucket_end,
@@ -287,7 +291,12 @@ export function markUploadBucketSent(db: Database, id: string): void {
   ).run({ id });
 }
 
-export function markUploadBucketFailed(db: Database, id: string, error: string, retryAfterSeconds: number): void {
+export function markUploadBucketFailed(
+  db: Database,
+  id: string,
+  error: string,
+  retryAfterSeconds: number,
+): void {
   const safeRetry = Math.max(10, retryAfterSeconds);
   db.query(
     `UPDATE upload_queue

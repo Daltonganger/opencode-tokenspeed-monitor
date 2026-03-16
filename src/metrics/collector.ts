@@ -23,16 +23,25 @@ function isSessionIdleEvent(event: Event): event is EventSessionIdle {
   return event.type === "session.idle";
 }
 
-function isAssistantMessage(message: EventMessageUpdated["properties"]["info"]): message is AssistantMessage {
+function isAssistantMessage(
+  message: EventMessageUpdated["properties"]["info"],
+): message is AssistantMessage {
   return message.role === "assistant";
 }
 
-function isStepFinishPart(part: EventMessagePartUpdated["properties"]["part"]): part is StepFinishPart {
+function isStepFinishPart(
+  part: EventMessagePartUpdated["properties"]["part"],
+): part is StepFinishPart {
   return part.type === "step-finish";
 }
 
 function toRequestMetrics(partial: Partial<RequestMetrics>): RequestMetrics | null {
-  if (!partial.sessionID || !partial.messageID || !partial.modelID || partial.startedAt === undefined) {
+  if (
+    !partial.sessionID ||
+    !partial.messageID ||
+    !partial.modelID ||
+    partial.startedAt === undefined
+  ) {
     return null;
   }
 

@@ -1,13 +1,13 @@
 import type { Plugin } from "@opencode-ai/plugin";
 import { MetricsCollector } from "./metrics/collector";
 import { getAnonProjectID } from "./privacy/anon";
-import { migrate } from "./storage/migrations";
+import { type ApiServerHandle, startApiServer } from "./server/server";
 import { saveRequest } from "./storage/database";
+import { migrate } from "./storage/migrations";
 import { createTools } from "./tools";
-import { startApiServer, type ApiServerHandle } from "./server/server";
+import type { PluginState, RequestMetrics } from "./types";
 import { startUploadDispatcher, type UploadDispatcherHandle } from "./upload/dispatcher";
 import { enqueueRequestBucket } from "./upload/queue";
-import type { PluginState, RequestMetrics } from "./types";
 
 const DEFAULT_BG_PORT = 3456;
 const DEFAULT_UPLOAD_HUB_URL = "https://tokenspeed.2631.eu";
@@ -45,12 +45,13 @@ function parsePositiveInt(value: string | undefined, fallback: number): number {
 }
 
 function formatMetricsLine(metrics: RequestMetrics): string {
-  const duration = metrics.durationMs !== undefined ? `${(metrics.durationMs / 1000).toFixed(1)}s` : "N/A";
+  const duration =
+    metrics.durationMs !== undefined ? `${(metrics.durationMs / 1000).toFixed(1)}s` : "N/A";
   const tps = metrics.outputTps !== undefined ? `${metrics.outputTps} tok/s` : "N/A";
   return `${metrics.modelID} | ${tps} | ${duration}`;
 }
 
-export const TokenSpeedMonitor: Plugin = async input => {
+export const TokenSpeedMonitor: Plugin = async (input) => {
   const { client, $ } = input;
   const projectRoot = resolveProjectRoot(input);
 
@@ -169,7 +170,8 @@ export const TokenSpeedMonitor: Plugin = async input => {
 
     return {
       enabled: state.backgroundEnabled,
-      detail: `TokenSpeed API is always ON (${server.url}).` +
+      detail:
+        `TokenSpeed API is always ON (${server.url}).` +
         ` Background mode flag is now ${state.backgroundEnabled ? "ON" : "OFF"}.`,
     };
   };
@@ -201,7 +203,7 @@ export const TokenSpeedMonitor: Plugin = async input => {
       db,
       hubURL,
       intervalSeconds: uploadIntervalSeconds,
-      logger: async message => {
+      logger: async (message) => {
         await client.app.log({
           body: {
             service: "tokenspeed-monitor",

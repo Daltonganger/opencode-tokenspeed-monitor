@@ -85,7 +85,7 @@ export function getPendingUploadBuckets(db, limit = 20) {
         ORDER BY bucket_start ASC
         LIMIT ?;`)
         .all(safeLimit);
-    return rows.map(row => ({
+    return rows.map((row) => ({
         id: row.id,
         bucketStart: row.bucket_start,
         bucketEnd: row.bucket_end,
@@ -147,7 +147,7 @@ export function getUploadQueueEntries(db, limit = 100, status) {
        ORDER BY bucket_start DESC
        LIMIT $limit;`)
         .all({ limit: safeLimit, status: normalizedStatus });
-    return rows.map(row => ({
+    return rows.map((row) => ({
         id: row.id,
         bucketStart: row.bucket_start,
         bucketEnd: row.bucket_end,

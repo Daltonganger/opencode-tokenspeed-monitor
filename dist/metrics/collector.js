@@ -15,7 +15,10 @@ function isStepFinishPart(part) {
     return part.type === "step-finish";
 }
 function toRequestMetrics(partial) {
-    if (!partial.sessionID || !partial.messageID || !partial.modelID || partial.startedAt === undefined) {
+    if (!partial.sessionID ||
+        !partial.messageID ||
+        !partial.modelID ||
+        partial.startedAt === undefined) {
         return null;
     }
     return {

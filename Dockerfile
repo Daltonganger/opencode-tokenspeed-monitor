@@ -1,4 +1,4 @@
-FROM oven/bun:1.2 AS build
+FROM oven/bun:1.3.8 AS build
 
 WORKDIR /app
 
@@ -11,7 +11,7 @@ COPY README.md LICENSE ./
 RUN bun install --frozen-lockfile
 RUN bun run build
 
-FROM oven/bun:1.2
+FROM oven/bun:1.3.8
 
 WORKDIR /app
 

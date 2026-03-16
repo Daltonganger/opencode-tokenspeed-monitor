@@ -1,5 +1,5 @@
-import type { ToolDefinition } from "@opencode-ai/plugin";
 import type { Database } from "bun:sqlite";
+import type { ToolDefinition } from "@opencode-ai/plugin";
 export type UploadInfoProvider = () => {
     enabled: boolean;
     hubURL: string | null;

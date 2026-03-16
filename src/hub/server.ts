@@ -1,29 +1,29 @@
-import { createHmac, randomUUID } from "node:crypto";
 import type { Database } from "bun:sqlite";
+import { createHmac, randomUUID } from "node:crypto";
+import { getTokenSpeedLogoWebp } from "../ui/logo";
 import {
   activateHubDevice,
   bulkSetHubDevicesStatus,
   cleanupExpiredNonces,
   getHubDevice,
-  getHubProviders,
-  listHubDevices,
   getHubModels,
   getHubProjects,
+  getHubProviders,
   getHubSummary,
   getHubTimeseries,
+  type HubBucketInput,
   type HubDashboardFilters,
   type HubTimeseriesGroupBy,
   type HubTimeseriesMetric,
   isNonceUsed,
+  listHubDevices,
   openHubDatabase,
   registerHubDevice,
   revokeHubDevice,
   storeNonce,
   touchHubDeviceSeen,
-  type HubBucketInput,
   upsertHubBuckets,
 } from "./database";
-import { getTokenSpeedLogoWebp } from "../ui/logo";
 
 const DEFAULT_HUB_PORT = 3476;
 const TIMESTAMP_WINDOW_SECONDS = 300;
@@ -81,7 +81,12 @@ const CORS_HEADERS: Record<string, string> = {
     "Content-Type, Authorization, X-TS-Admin-Token, X-TS-Device-ID, X-TS-Timestamp, X-TS-Nonce, X-TS-Signature",
 };
 
-function parsePositiveInt(value: string | undefined, fallback: number, min: number, max: number): number {
+function parsePositiveInt(
+  value: string | undefined,
+  fallback: number,
+  min: number,
+  max: number,
+): number {
   if (!value) return fallback;
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return fallback;
@@ -127,7 +132,9 @@ function parseRange(url: URL): { from?: number; to?: number; limit: number } {
   const from = fromRaw ? Number(fromRaw) : undefined;
   const to = toRaw ? Number(toRaw) : undefined;
   const limitParsed = limitRaw ? Number(limitRaw) : 100;
-  const limit = Number.isFinite(limitParsed) ? Math.max(1, Math.min(1000, Math.floor(limitParsed))) : 100;
+  const limit = Number.isFinite(limitParsed)
+    ? Math.max(1, Math.min(1000, Math.floor(limitParsed)))
+    : 100;
 
   return {
     from: Number.isFinite(from) ? from : undefined,
@@ -168,7 +175,7 @@ function csvCell(value: unknown): string {
   if (value === null || value === undefined) return "";
   const text = String(value);
   if (!/[",\n]/.test(text)) return text;
-  return `"${text.replaceAll("\"", "\"\"")}"`;
+  return `"${text.replaceAll('"', '""')}"`;
 }
 
 function csvRow(values: unknown[]): string {
@@ -184,9 +191,33 @@ function buildDashboardExportCsv(db: Database, url: URL): string {
   const models = getHubModels(db, range.from, range.to, range.limit, filters);
   const providers = getHubProviders(db, range.from, range.to, range.limit, filters);
   const projects = getHubProjects(db, range.from, range.to, range.limit, filters);
-  const tokenSeries = getHubTimeseries(db, "tokens", groupBy, range.from, range.to, range.limit, filters);
-  const costSeries = getHubTimeseries(db, "cost", groupBy, range.from, range.to, range.limit, filters);
-  const tpsSeries = getHubTimeseries(db, "tps", groupBy, range.from, range.to, range.limit, filters);
+  const tokenSeries = getHubTimeseries(
+    db,
+    "tokens",
+    groupBy,
+    range.from,
+    range.to,
+    range.limit,
+    filters,
+  );
+  const costSeries = getHubTimeseries(
+    db,
+    "cost",
+    groupBy,
+    range.from,
+    range.to,
+    range.limit,
+    filters,
+  );
+  const tpsSeries = getHubTimeseries(
+    db,
+    "tps",
+    groupBy,
+    range.from,
+    range.to,
+    range.limit,
+    filters,
+  );
 
   const lines: string[] = [];
   lines.push(
@@ -330,19 +361,22 @@ function buildDashboardExportCsv(db: Database, url: URL): string {
     );
   }
 
-  const appendSeries = (metric: "tokens" | "cost" | "tps", points: Array<{ ts: number; value: number; requestCount: number }>) => {
+  const appendSeries = (
+    metric: "tokens" | "cost" | "tps",
+    points: Array<{ ts: number; value: number; requestCount: number }>,
+  ) => {
     for (const point of points) {
       lines.push(
         csvRow([
           "timeseries",
           range.from ?? "",
           range.to ?? "",
-        filters.anonProjectId ?? "",
-        filters.providerId ?? "",
-        filters.modelId ?? "",
-        filters.deviceId ?? "",
-        filters.anonUserId ?? "",
-        point.ts,
+          filters.anonProjectId ?? "",
+          filters.providerId ?? "",
+          filters.modelId ?? "",
+          filters.deviceId ?? "",
+          filters.anonUserId ?? "",
+          point.ts,
           metric,
           groupBy,
           point.requestCount,
@@ -377,9 +411,33 @@ function buildDashboardExportJson(db: Database, url: URL): unknown {
   const models = getHubModels(db, range.from, range.to, range.limit, filters);
   const providers = getHubProviders(db, range.from, range.to, range.limit, filters);
   const projects = getHubProjects(db, range.from, range.to, range.limit, filters);
-  const tokenSeries = getHubTimeseries(db, "tokens", groupBy, range.from, range.to, range.limit, filters);
-  const costSeries = getHubTimeseries(db, "cost", groupBy, range.from, range.to, range.limit, filters);
-  const tpsSeries = getHubTimeseries(db, "tps", groupBy, range.from, range.to, range.limit, filters);
+  const tokenSeries = getHubTimeseries(
+    db,
+    "tokens",
+    groupBy,
+    range.from,
+    range.to,
+    range.limit,
+    filters,
+  );
+  const costSeries = getHubTimeseries(
+    db,
+    "cost",
+    groupBy,
+    range.from,
+    range.to,
+    range.limit,
+    filters,
+  );
+  const tpsSeries = getHubTimeseries(
+    db,
+    "tps",
+    groupBy,
+    range.from,
+    range.to,
+    range.limit,
+    filters,
+  );
 
   return {
     generatedAt: Math.floor(Date.now() / 1000),
@@ -2007,19 +2065,33 @@ function isValidBucket(input: unknown): input is HubBucketInput {
     "totalCost",
   ];
   for (const key of requiredNumber) {
-    if (typeof candidate[key] !== "number" || !Number.isFinite(candidate[key] as number)) return false;
+    if (typeof candidate[key] !== "number" || !Number.isFinite(candidate[key] as number))
+      return false;
   }
   const requiredString = ["anonProjectId", "providerId", "modelId"];
   for (const key of requiredString) {
-    if (typeof candidate[key] !== "string" || (candidate[key] as string).trim().length === 0) return false;
+    if (typeof candidate[key] !== "string" || (candidate[key] as string).trim().length === 0)
+      return false;
   }
-  if (candidate.avgOutputTps !== null && candidate.avgOutputTps !== undefined && typeof candidate.avgOutputTps !== "number") {
+  if (
+    candidate.avgOutputTps !== null &&
+    candidate.avgOutputTps !== undefined &&
+    typeof candidate.avgOutputTps !== "number"
+  ) {
     return false;
   }
-  if (candidate.minOutputTps !== null && candidate.minOutputTps !== undefined && typeof candidate.minOutputTps !== "number") {
+  if (
+    candidate.minOutputTps !== null &&
+    candidate.minOutputTps !== undefined &&
+    typeof candidate.minOutputTps !== "number"
+  ) {
     return false;
   }
-  if (candidate.maxOutputTps !== null && candidate.maxOutputTps !== undefined && typeof candidate.maxOutputTps !== "number") {
+  if (
+    candidate.maxOutputTps !== null &&
+    candidate.maxOutputTps !== undefined &&
+    typeof candidate.maxOutputTps !== "number"
+  ) {
     return false;
   }
   return true;
@@ -2029,12 +2101,18 @@ function isValidIngestPayload(input: unknown): input is IngestPayload {
   if (typeof input !== "object" || input === null) return false;
   const candidate = input as Record<string, unknown>;
   if (typeof candidate.schemaVersion !== "number") return false;
-  if (typeof candidate.deviceId !== "string" || candidate.deviceId.trim().length === 0) return false;
+  if (typeof candidate.deviceId !== "string" || candidate.deviceId.trim().length === 0)
+    return false;
   if (!Array.isArray(candidate.buckets)) return false;
   return candidate.buckets.every(isValidBucket);
 }
 
-function signatureFor(payload: string, timestamp: string, nonce: string, signingKey: string): string {
+function signatureFor(
+  payload: string,
+  timestamp: string,
+  nonce: string,
+  signingKey: string,
+): string {
   return createHmac("sha256", signingKey).update(`${timestamp}.${nonce}.${payload}`).digest("hex");
 }
 
@@ -2047,7 +2125,9 @@ function secureEqualHex(a: string, b: string): boolean {
   return diff === 0;
 }
 
-async function parseSignedBody(req: Request): Promise<{ raw: string; payload: IngestPayload } | Response> {
+async function parseSignedBody(
+  req: Request,
+): Promise<{ raw: string; payload: IngestPayload } | Response> {
   let rawBody = "";
   try {
     rawBody = await req.text();
@@ -2080,7 +2160,8 @@ async function parseJsonBody(req: Request): Promise<unknown | Response> {
 function isRegisterPayload(input: unknown): input is RegisterPayload {
   if (typeof input !== "object" || input === null) return false;
   const candidate = input as Record<string, unknown>;
-  if (typeof candidate.inviteToken !== "string" || candidate.inviteToken.trim().length === 0) return false;
+  if (typeof candidate.inviteToken !== "string" || candidate.inviteToken.trim().length === 0)
+    return false;
   if (candidate.deviceId !== undefined && typeof candidate.deviceId !== "string") return false;
   if (candidate.anonUserId !== undefined && typeof candidate.anonUserId !== "string") return false;
   if (candidate.label !== undefined && typeof candidate.label !== "string") return false;
@@ -2107,7 +2188,7 @@ function isBulkDevicePayload(input: unknown): input is BulkDevicePayload {
   const candidate = input as Record<string, unknown>;
   if (candidate.action !== "revoke" && candidate.action !== "activate") return false;
   if (!Array.isArray(candidate.deviceIds)) return false;
-  return candidate.deviceIds.every(item => typeof item === "string");
+  return candidate.deviceIds.every((item) => typeof item === "string");
 }
 
 function randomDeviceId(): string {
@@ -2180,7 +2261,10 @@ function auditLog(action: string, fields: Record<string, string | number | boole
   console.info(`[tokenspeed-hub] ${JSON.stringify(payload)}`);
 }
 
-export function startHubServer(requestedPort?: number, options: HubServerOptions = {}): HubServerHandle {
+export function startHubServer(
+  requestedPort?: number,
+  options: HubServerOptions = {},
+): HubServerHandle {
   const db = options.db ?? openHubDatabase();
   const signingKey = options.signingKey ?? process.env.TS_HUB_SIGNING_KEY?.trim() ?? "";
   const inviteToken = options.inviteToken ?? process.env.TS_HUB_INVITE_TOKEN?.trim() ?? "";
@@ -2213,7 +2297,7 @@ export function startHubServer(requestedPort?: number, options: HubServerOptions
     Bun.serve({
       port,
       routes: {
-        "/": req => {
+        "/": (req) => {
           if (req.method === "OPTIONS") return preflight();
           if (req.method !== "GET") return err(405, "Method Not Allowed");
           return withCors(
@@ -2225,7 +2309,7 @@ export function startHubServer(requestedPort?: number, options: HubServerOptions
             }),
           );
         },
-        "/assets/tokenspeed-logo.webp": req => {
+        "/assets/tokenspeed-logo.webp": (req) => {
           if (req.method === "OPTIONS") return preflight();
           if (req.method !== "GET") return err(405, "Method Not Allowed");
           const logo = getTokenSpeedLogoWebp();
@@ -2239,7 +2323,7 @@ export function startHubServer(requestedPort?: number, options: HubServerOptions
             }),
           );
         },
-        "/dashboard": req => {
+        "/dashboard": (req) => {
           if (req.method === "OPTIONS") return preflight();
           if (req.method !== "GET") return err(405, "Method Not Allowed");
           return withCors(
@@ -2251,7 +2335,7 @@ export function startHubServer(requestedPort?: number, options: HubServerOptions
             }),
           );
         },
-        "/admin": req => {
+        "/admin": (req) => {
           if (req.method === "OPTIONS") return preflight();
           if (req.method !== "GET") return err(405, "Method Not Allowed");
           if (!adminToken) return err(503, "Admin token is not configured on hub");
@@ -2276,7 +2360,7 @@ export function startHubServer(requestedPort?: number, options: HubServerOptions
             }),
           );
         },
-        "/admin/login": async req => {
+        "/admin/login": async (req) => {
           if (req.method === "OPTIONS") return preflight();
           if (req.method !== "POST") return err(405, "Method Not Allowed");
           if (!adminToken) return err(503, "Admin token is not configured on hub");
@@ -2348,7 +2432,7 @@ export function startHubServer(requestedPort?: number, options: HubServerOptions
             }),
           );
         },
-        "/admin/logout": req => {
+        "/admin/logout": (req) => {
           if (req.method === "OPTIONS") return preflight();
           if (req.method !== "POST") return err(405, "Method Not Allowed");
           auditLog("admin_logout", {
@@ -2365,7 +2449,7 @@ export function startHubServer(requestedPort?: number, options: HubServerOptions
             }),
           );
         },
-        "/v1/health": req => {
+        "/v1/health": (req) => {
           if (req.method === "OPTIONS") return preflight();
           if (req.method !== "GET") return err(405, "Method Not Allowed");
           return json({
@@ -2374,7 +2458,7 @@ export function startHubServer(requestedPort?: number, options: HubServerOptions
             service: "tokenspeed-hub",
           });
         },
-        "/v1/ingest/buckets": async req => {
+        "/v1/ingest/buckets": async (req) => {
           if (req.method === "OPTIONS") return preflight();
           if (req.method !== "POST") return err(405, "Method Not Allowed");
 
@@ -2418,7 +2502,12 @@ export function startHubServer(requestedPort?: number, options: HubServerOptions
             return err(401, "Device ID mismatch");
           }
 
-          const expected = signatureFor(parsed.raw, timestamp, nonce, deviceRecord?.signingKey ?? signingKey);
+          const expected = signatureFor(
+            parsed.raw,
+            timestamp,
+            nonce,
+            deviceRecord?.signingKey ?? signingKey,
+          );
           if (!secureEqualHex(expected, signature)) {
             return err(401, "Invalid signature");
           }
@@ -2434,7 +2523,7 @@ export function startHubServer(requestedPort?: number, options: HubServerOptions
             serverTime: now,
           });
         },
-        "/v1/devices/register": async req => {
+        "/v1/devices/register": async (req) => {
           if (req.method === "OPTIONS") return preflight();
           if (req.method !== "POST") return err(405, "Method Not Allowed");
           if (!inviteToken) return err(503, "Invite token is not configured on hub");
@@ -2456,7 +2545,7 @@ export function startHubServer(requestedPort?: number, options: HubServerOptions
             status: device.status,
           });
         },
-        "/v1/devices/bootstrap": async req => {
+        "/v1/devices/bootstrap": async (req) => {
           if (req.method === "OPTIONS") return preflight();
           if (req.method !== "POST") return err(405, "Method Not Allowed");
 
@@ -2476,7 +2565,7 @@ export function startHubServer(requestedPort?: number, options: HubServerOptions
             status: device.status,
           });
         },
-        "/v1/devices": req => {
+        "/v1/devices": (req) => {
           if (req.method === "OPTIONS") return preflight();
           if (req.method !== "GET") return err(405, "Method Not Allowed");
           if (!adminToken) return err(503, "Admin token is not configured on hub");
@@ -2486,11 +2575,12 @@ export function startHubServer(requestedPort?: number, options: HubServerOptions
           const url = new URL(req.url);
           const { limit } = parseRange(url);
           const statusParam = url.searchParams.get("status")?.trim();
-          const status = statusParam === "active" || statusParam === "revoked" ? statusParam : undefined;
+          const status =
+            statusParam === "active" || statusParam === "revoked" ? statusParam : undefined;
           const deviceId = url.searchParams.get("deviceId")?.trim() || undefined;
           const anonUserId = url.searchParams.get("anonUserId")?.trim() || undefined;
           return json(
-            listHubDevices(db, limit, { status, deviceId, anonUserId }).map(device => ({
+            listHubDevices(db, limit, { status, deviceId, anonUserId }).map((device) => ({
               deviceId: device.deviceId,
               anonUserId: device.anonUserId,
               label: device.label,
@@ -2502,7 +2592,7 @@ export function startHubServer(requestedPort?: number, options: HubServerOptions
             })),
           );
         },
-        "/v1/devices/revoke": async req => {
+        "/v1/devices/revoke": async (req) => {
           if (req.method === "OPTIONS") return preflight();
           if (req.method !== "POST") return err(405, "Method Not Allowed");
           if (!adminToken) return err(503, "Admin token is not configured on hub");
@@ -2522,7 +2612,7 @@ export function startHubServer(requestedPort?: number, options: HubServerOptions
           });
           return json({ ok: true, deviceId });
         },
-        "/v1/devices/activate": async req => {
+        "/v1/devices/activate": async (req) => {
           if (req.method === "OPTIONS") return preflight();
           if (req.method !== "POST") return err(405, "Method Not Allowed");
           if (!adminToken) return err(503, "Admin token is not configured on hub");
@@ -2542,7 +2632,7 @@ export function startHubServer(requestedPort?: number, options: HubServerOptions
           });
           return json({ ok: true, deviceId });
         },
-        "/v1/devices/bulk": async req => {
+        "/v1/devices/bulk": async (req) => {
           if (req.method === "OPTIONS") return preflight();
           if (req.method !== "POST") return err(405, "Method Not Allowed");
           if (!adminToken) return err(503, "Admin token is not configured on hub");
@@ -2574,7 +2664,7 @@ export function startHubServer(requestedPort?: number, options: HubServerOptions
             missing: result.missing,
           });
         },
-        "/v1/dashboard/summary": req => {
+        "/v1/dashboard/summary": (req) => {
           if (req.method === "OPTIONS") return preflight();
           if (req.method !== "GET") return err(405, "Method Not Allowed");
           const url = new URL(req.url);
@@ -2582,7 +2672,7 @@ export function startHubServer(requestedPort?: number, options: HubServerOptions
           const filters = parseDashboardFilters(url);
           return json(getHubSummary(db, range.from, range.to, filters));
         },
-        "/v1/dashboard/models": req => {
+        "/v1/dashboard/models": (req) => {
           if (req.method === "OPTIONS") return preflight();
           if (req.method !== "GET") return err(405, "Method Not Allowed");
           const url = new URL(req.url);
@@ -2590,7 +2680,7 @@ export function startHubServer(requestedPort?: number, options: HubServerOptions
           const filters = parseDashboardFilters(url);
           return json(getHubModels(db, range.from, range.to, range.limit, filters));
         },
-        "/v1/dashboard/providers": req => {
+        "/v1/dashboard/providers": (req) => {
           if (req.method === "OPTIONS") return preflight();
           if (req.method !== "GET") return err(405, "Method Not Allowed");
           const url = new URL(req.url);
@@ -2598,7 +2688,7 @@ export function startHubServer(requestedPort?: number, options: HubServerOptions
           const filters = parseDashboardFilters(url);
           return json(getHubProviders(db, range.from, range.to, range.limit, filters));
         },
-        "/v1/dashboard/projects": req => {
+        "/v1/dashboard/projects": (req) => {
           if (req.method === "OPTIONS") return preflight();
           if (req.method !== "GET") return err(405, "Method Not Allowed");
           const url = new URL(req.url);
@@ -2606,7 +2696,7 @@ export function startHubServer(requestedPort?: number, options: HubServerOptions
           const filters = parseDashboardFilters(url);
           return json(getHubProjects(db, range.from, range.to, range.limit, filters));
         },
-        "/v1/dashboard/timeseries": req => {
+        "/v1/dashboard/timeseries": (req) => {
           if (req.method === "OPTIONS") return preflight();
           if (req.method !== "GET") return err(405, "Method Not Allowed");
           const url = new URL(req.url);
@@ -2614,9 +2704,11 @@ export function startHubServer(requestedPort?: number, options: HubServerOptions
           const metric = parseMetric(url);
           const groupBy = parseGroupBy(url);
           const filters = parseDashboardFilters(url);
-          return json(getHubTimeseries(db, metric, groupBy, range.from, range.to, range.limit, filters));
+          return json(
+            getHubTimeseries(db, metric, groupBy, range.from, range.to, range.limit, filters),
+          );
         },
-        "/v1/dashboard/export.csv": req => {
+        "/v1/dashboard/export.csv": (req) => {
           if (req.method === "OPTIONS") return preflight();
           if (req.method !== "GET") return err(405, "Method Not Allowed");
           const url = new URL(req.url);
@@ -2631,7 +2723,7 @@ export function startHubServer(requestedPort?: number, options: HubServerOptions
             }),
           );
         },
-        "/v1/dashboard/export.json": req => {
+        "/v1/dashboard/export.json": (req) => {
           if (req.method === "OPTIONS") return preflight();
           if (req.method !== "GET") return err(405, "Method Not Allowed");
           const url = new URL(req.url);

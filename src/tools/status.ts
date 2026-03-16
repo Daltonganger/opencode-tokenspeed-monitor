@@ -1,5 +1,5 @@
-import { tool } from "@opencode-ai/plugin";
 import type { ToolDefinition } from "@opencode-ai/plugin";
+import { tool } from "@opencode-ai/plugin";
 import type { PluginState } from "../types";
 
 export function createStatusTool(state: PluginState): ToolDefinition {

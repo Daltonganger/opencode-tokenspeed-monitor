@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
-import type { ModelStats, ProjectStats, ProviderStats, RequestMetrics } from "../types";
 import { aggregateModelStats, aggregateProviderStats } from "../metrics/calculator";
+import type { ModelStats, ProjectStats, ProviderStats, RequestMetrics } from "../types";
 
 type RequestRow = {
   id: string;
@@ -158,13 +158,25 @@ export function getRecentRequests(db: Database, limit = 100): RequestMetrics[] {
   return getFilteredRequests(db, {}, limit);
 }
 
-export function getFilteredRequests(db: Database, filters: RequestFilters = {}, limit = 100): RequestMetrics[] {
+export function getFilteredRequests(
+  db: Database,
+  filters: RequestFilters = {},
+  limit = 100,
+): RequestMetrics[] {
   const safeLimit = Math.max(1, Math.min(limit, 1000));
   const projectID = filters.projectID?.trim() || null;
   const providerID = filters.providerID?.trim() || null;
   const modelID = filters.modelID?.trim() || null;
   const rows = db
-    .query<RequestRow, { project_id: string | null; provider_id: string | null; model_id: string | null; limit: number }>(
+    .query<
+      RequestRow,
+      {
+        project_id: string | null;
+        provider_id: string | null;
+        model_id: string | null;
+        limit: number;
+      }
+    >(
       `SELECT
         id, session_id, message_id, project_id, model_id, provider_id, agent,
         input_tokens, output_tokens, reasoning_tokens, cache_read, cache_write, total_tokens,
@@ -207,7 +219,10 @@ export function getSessionStats(db: Database): {
   return getSessionStatsWithFilters(db, {});
 }
 
-export function getSessionStatsWithFilters(db: Database, filters: RequestFilters): {
+export function getSessionStatsWithFilters(
+  db: Database,
+  filters: RequestFilters,
+): {
   requestCount: number;
   totalInputTokens: number;
   totalOutputTokens: number;
@@ -292,7 +307,7 @@ export function getProjects(db: Database, limit = 100): ProjectStats[] {
     )
     .all({ limit: safeLimit });
 
-  return rows.map(row => ({
+  return rows.map((row) => ({
     projectID: row.project_id,
     name: row.name,
     rootPath: row.root_path,
@@ -308,7 +323,12 @@ export function getProjects(db: Database, limit = 100): ProjectStats[] {
 export function getSessions(
   db: Database,
   limit = 100,
-): Array<{ id: string; startedAt: number | null; lastActivity: number | null; requestCount: number }> {
+): Array<{
+  id: string;
+  startedAt: number | null;
+  lastActivity: number | null;
+  requestCount: number;
+}> {
   const safeLimit = Math.max(1, Math.min(limit, 1000));
   const rows = db
     .query<
@@ -327,7 +347,7 @@ export function getSessions(
     )
     .all({ limit: safeLimit });
 
-  return rows.map(row => ({
+  return rows.map((row) => ({
     id: row.id,
     startedAt: row.started_at,
     lastActivity: row.last_activity,

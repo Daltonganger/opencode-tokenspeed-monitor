@@ -1,7 +1,7 @@
+import { Database } from "bun:sqlite";
 import { copyFileSync, existsSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
-import { Database } from "bun:sqlite";
 export const LEGACY_DB_PATH = "./data/tokenspeed-monitor.sqlite";
 export const DEFAULT_DB_FILE = "tokenspeed-monitor.sqlite";
 function resolvePathFromEnv(value) {
@@ -46,7 +46,7 @@ export function openDatabase(dbPath) {
 }
 function columnExists(db, tableName, columnName) {
     const rows = db.query(`PRAGMA table_info(${tableName});`).all();
-    return rows.some(row => row.name === columnName);
+    return rows.some((row) => row.name === columnName);
 }
 function ensureColumn(db, tableName, columnName, sqlType) {
     if (!columnExists(db, tableName, columnName)) {

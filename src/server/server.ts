@@ -1275,7 +1275,7 @@ function dashboardHtml(): string {
         tr.innerHTML =
           "<td>" + dateFmt(item.startedAt) + "</td>" +
           "<td>" + (item.providerID || "unknown") + "</td>" +
-          "<td class=\"mono\">" + item.modelID + "</td>" +
+          "<td class="mono">" + item.modelID + "</td>" +
           "<td>" + intFmt(item.inputTokens) + "</td>" +
           "<td>" + intFmt(item.outputTokens) + "</td>" +
           "<td>" + numFmt(item.outputTps) + "</td>" +
@@ -1448,7 +1448,11 @@ function dashboardHtml(): string {
 </html>`;
 }
 
-export function startApiServer(db: Database, requestedPort: number, options: ApiServerOptions = {}): ApiServerHandle {
+export function startApiServer(
+  db: Database,
+  requestedPort: number,
+  options: ApiServerOptions = {},
+): ApiServerHandle {
   const subscribers = new Set<StreamController>();
 
   const createSseResponse = () => {
@@ -1457,7 +1461,7 @@ export function startApiServer(db: Database, requestedPort: number, options: Api
     const stream = new ReadableStream<string>({
       start(controller) {
         const subscriber: StreamController = {
-          enqueue: chunk => controller.enqueue(chunk),
+          enqueue: (chunk) => controller.enqueue(chunk),
           close: () => controller.close(),
         };
 
@@ -1478,20 +1482,22 @@ export function startApiServer(db: Database, requestedPort: number, options: Api
       },
     });
 
-    return withCors(new Response(stream, {
-      headers: {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache",
-        Connection: "keep-alive",
-      },
-    }));
+    return withCors(
+      new Response(stream, {
+        headers: {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          Connection: "keep-alive",
+        },
+      }),
+    );
   };
 
   const tryStart = (port: number) =>
     Bun.serve({
       port,
       routes: {
-        "/": req => {
+        "/": (req) => {
           if (req.method !== "GET") return methodNotAllowed();
           return new Response(dashboardHtml(), {
             headers: {
@@ -1500,7 +1506,7 @@ export function startApiServer(db: Database, requestedPort: number, options: Api
             },
           });
         },
-        "/assets/tokenspeed-logo.webp": req => {
+        "/assets/tokenspeed-logo.webp": (req) => {
           if (req.method === "OPTIONS") return preflightResponse();
           if (req.method !== "GET") return methodNotAllowed();
           const logo = getTokenSpeedLogoWebp();
@@ -1512,35 +1518,39 @@ export function startApiServer(db: Database, requestedPort: number, options: Api
             },
           });
         },
-        "/api/stats": req => {
+        "/api/stats": (req) => {
           if (req.method === "OPTIONS") return preflightResponse();
           if (req.method !== "GET") return methodNotAllowed();
           const url = new URL(req.url);
           return jsonResponse(getSessionStatsWithFilters(db, parseRequestFilters(url)));
         },
-        "/api/stats/models": req => {
+        "/api/stats/models": (req) => {
           if (req.method === "OPTIONS") return preflightResponse();
           if (req.method !== "GET") return methodNotAllowed();
           const url = new URL(req.url);
           const filters = parseRequestFilters(url);
           const limit = parseLimit(url, 100);
-          return jsonResponse(getModelStats(db, filters).slice(0, Math.max(1, Math.min(limit, 1000))));
+          return jsonResponse(
+            getModelStats(db, filters).slice(0, Math.max(1, Math.min(limit, 1000))),
+          );
         },
-        "/api/stats/providers": req => {
+        "/api/stats/providers": (req) => {
           if (req.method === "OPTIONS") return preflightResponse();
           if (req.method !== "GET") return methodNotAllowed();
           const url = new URL(req.url);
           const filters = parseRequestFilters(url);
           const limit = parseLimit(url, 100);
-          return jsonResponse(getProviderStats(db, filters).slice(0, Math.max(1, Math.min(limit, 1000))));
+          return jsonResponse(
+            getProviderStats(db, filters).slice(0, Math.max(1, Math.min(limit, 1000))),
+          );
         },
-        "/api/projects": req => {
+        "/api/projects": (req) => {
           if (req.method === "OPTIONS") return preflightResponse();
           if (req.method !== "GET") return methodNotAllowed();
           const url = new URL(req.url);
           return jsonResponse(getProjects(db, parseLimit(url, 100)));
         },
-        "/api/upload/status": req => {
+        "/api/upload/status": (req) => {
           if (req.method === "OPTIONS") return preflightResponse();
           if (req.method !== "GET") return methodNotAllowed();
           return jsonResponse({
@@ -1549,7 +1559,7 @@ export function startApiServer(db: Database, requestedPort: number, options: Api
             queue: getUploadQueueStatus(db),
           });
         },
-        "/api/upload/queue": req => {
+        "/api/upload/queue": (req) => {
           if (req.method === "OPTIONS") return preflightResponse();
           if (req.method !== "GET") return methodNotAllowed();
           const url = new URL(req.url);
@@ -1557,7 +1567,7 @@ export function startApiServer(db: Database, requestedPort: number, options: Api
           const status = url.searchParams.get("status")?.trim() || undefined;
           return jsonResponse(getUploadQueueEntries(db, limit, status));
         },
-        "/api/upload/flush": async req => {
+        "/api/upload/flush": async (req) => {
           if (req.method === "OPTIONS") return preflightResponse();
           if (req.method !== "POST") return methodNotAllowed();
           if (!options.flushUploadNow) {
@@ -1566,20 +1576,20 @@ export function startApiServer(db: Database, requestedPort: number, options: Api
           await options.flushUploadNow();
           return jsonResponse({ ok: true });
         },
-        "/api/history": req => {
+        "/api/history": (req) => {
           if (req.method === "OPTIONS") return preflightResponse();
           if (req.method !== "GET") return methodNotAllowed();
           const url = new URL(req.url);
           const limit = parseLimit(url, 100);
           return jsonResponse(getFilteredRequests(db, parseRequestFilters(url), limit));
         },
-        "/api/sessions": req => {
+        "/api/sessions": (req) => {
           if (req.method === "OPTIONS") return preflightResponse();
           if (req.method !== "GET") return methodNotAllowed();
           const url = new URL(req.url);
           return jsonResponse(getSessions(db, parseLimit(url, 100)));
         },
-        "/api/live": req => {
+        "/api/live": (req) => {
           if (req.method === "OPTIONS") return preflightResponse();
           if (req.method !== "GET") return methodNotAllowed();
           return createSseResponse();

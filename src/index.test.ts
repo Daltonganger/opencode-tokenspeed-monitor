@@ -64,16 +64,22 @@ describe("plugin entry", () => {
 
     const toggle = hooks.tool?.["ts-toggle"];
     expect(toggle).toBeDefined();
-    const result = await toggle!.execute({}, {
-      sessionID: "ses-1",
-      messageID: "msg-1",
-      agent: "general",
-      directory: process.cwd(),
-      worktree: process.cwd(),
-      abort: new AbortController().signal,
-      metadata: () => {},
-      ask: async () => {},
-    });
+    if (!toggle) {
+      throw new Error("Expected ts-toggle tool to be defined");
+    }
+    const result = await toggle.execute(
+      {},
+      {
+        sessionID: "ses-1",
+        messageID: "msg-1",
+        agent: "general",
+        directory: process.cwd(),
+        worktree: process.cwd(),
+        abort: new AbortController().signal,
+        metadata: () => {},
+        ask: async () => {},
+      },
+    );
 
     expect(result.includes("TokenSpeed monitor")).toBe(true);
     expect(mock.logs.length).toBeGreaterThan(0);

@@ -1,5 +1,5 @@
-import type { PluginInput, ToolDefinition } from "@opencode-ai/plugin";
 import type { Database } from "bun:sqlite";
+import type { PluginInput, ToolDefinition } from "@opencode-ai/plugin";
 import type { PluginState } from "../types";
 import { type BackgroundToggleResult } from "./background";
 import { type UploadFlushResult } from "./upload";

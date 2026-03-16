@@ -1,7 +1,7 @@
-import { mkdirSync } from "node:fs";
-import { randomBytes } from "node:crypto";
-import { dirname, join, resolve } from "node:path";
 import { Database } from "bun:sqlite";
+import { randomBytes } from "node:crypto";
+import { mkdirSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { resolveOpenCodeHome } from "../storage/migrations";
 function resolveHubDbPath(dbPath) {
     if (dbPath?.trim())
@@ -76,8 +76,7 @@ export function runHubMigrations(db) {
     try {
         db.exec("ALTER TABLE hub_devices ADD COLUMN anon_user_id TEXT NOT NULL DEFAULT '';");
     }
-    catch {
-    }
+    catch { }
     db.exec("UPDATE hub_devices SET anon_user_id = id WHERE anon_user_id = '';");
 }
 function mapHubDevice(row) {
@@ -142,24 +141,28 @@ export function registerHubDevice(db, deviceID, label, anonUserID) {
 }
 export function revokeHubDevice(db, deviceID) {
     const now = Math.floor(Date.now() / 1000);
-    const result = db.query(`UPDATE hub_devices
+    const result = db
+        .query(`UPDATE hub_devices
      SET status = 'revoked',
          revoked_at = $now,
          updated_at = $now
-     WHERE id = $id;`).run({ id: deviceID, now });
+     WHERE id = $id;`)
+        .run({ id: deviceID, now });
     return result.changes > 0;
 }
 export function activateHubDevice(db, deviceID) {
     const now = Math.floor(Date.now() / 1000);
-    const result = db.query(`UPDATE hub_devices
+    const result = db
+        .query(`UPDATE hub_devices
      SET status = 'active',
          revoked_at = NULL,
          updated_at = $now
-     WHERE id = $id;`).run({ id: deviceID, now });
+     WHERE id = $id;`)
+        .run({ id: deviceID, now });
     return result.changes > 0;
 }
 export function bulkSetHubDevicesStatus(db, deviceIDs, status) {
-    const uniqueIDs = [...new Set(deviceIDs.map(id => id.trim()).filter(Boolean))];
+    const uniqueIDs = [...new Set(deviceIDs.map((id) => id.trim()).filter(Boolean))];
     if (uniqueIDs.length === 0) {
         return { updated: [], missing: [] };
     }
@@ -372,7 +375,7 @@ export function getHubModels(db, from, to, limit = 100, filters = {}) {
        ORDER BY request_count DESC
        LIMIT $limit;`)
         .all(params);
-    return rows.map(row => ({
+    return rows.map((row) => ({
         modelId: row.model_id,
         providerId: row.provider_id,
         requestCount: row.request_count,
@@ -408,7 +411,7 @@ export function getHubProjects(db, from, to, limit = 100, filters = {}) {
        ORDER BY request_count DESC
        LIMIT $limit;`)
         .all(params);
-    return rows.map(row => ({
+    return rows.map((row) => ({
         anonProjectId: row.anon_project_id,
         requestCount: row.request_count,
         totalInputTokens: row.total_input_tokens,
@@ -443,7 +446,7 @@ export function getHubProviders(db, from, to, limit = 100, filters = {}) {
        ORDER BY request_count DESC
        LIMIT $limit;`)
         .all(params);
-    return rows.map(row => ({
+    return rows.map((row) => ({
         providerId: row.provider_id,
         requestCount: row.request_count,
         totalInputTokens: row.total_input_tokens,
@@ -457,7 +460,12 @@ export function getHubProviders(db, from, to, limit = 100, filters = {}) {
 export function getHubTimeseries(db, metric, groupBy, from, to, limit = 200, filters = {}) {
     const safeLimit = Math.max(1, Math.min(limit, 2000));
     const range = rangeParams(from, to);
-    const params = { ...range, ...filterParams(filters), bucket_seconds: groupBy === "day" ? 86400 : 3600, limit: safeLimit };
+    const params = {
+        ...range,
+        ...filterParams(filters),
+        bucket_seconds: groupBy === "day" ? 86400 : 3600,
+        limit: safeLimit,
+    };
     const valueExpr = metric === "cost"
         ? "COALESCE(SUM(total_cost), 0)"
         : metric === "tps"
@@ -484,7 +492,7 @@ export function getHubTimeseries(db, metric, groupBy, from, to, limit = 200, fil
        LIMIT $limit;`)
         .all(params);
     return rows
-        .map(row => ({
+        .map((row) => ({
         ts: row.ts,
         value: row.value,
         requestCount: row.request_count,

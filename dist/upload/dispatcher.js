@@ -37,7 +37,9 @@ async function registerDevice(hubURL, inviteToken, desiredDeviceID, anonUserID) 
     return {
         deviceId: body.deviceId,
         signingKey: body.signingKey,
-        status: typeof body.status === "string" ? body.status : "unknown",
+        status: typeof body.status === "string"
+            ? body.status
+            : "unknown",
     };
 }
 async function uploadBucket(hubURL, bucket, deviceID, signingKey) {
@@ -111,7 +113,9 @@ async function bootstrapDevice(hubURL, desiredDeviceID, anonUserID) {
             ? body.anonUserId
             : undefined,
         signingKey: body.signingKey,
-        status: typeof body.status === "string" ? body.status : "unknown",
+        status: typeof body.status === "string"
+            ? body.status
+            : "unknown",
     };
 }
 export function startUploadDispatcher(options) {

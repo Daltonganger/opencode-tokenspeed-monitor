@@ -27,9 +27,7 @@ export function createOpenTool(client, state, shell) {
                 body: {
                     service: "tokenspeed-monitor",
                     level: "info",
-                    message: opened
-                        ? `TokenSpeed page opened: ${url}`
-                        : `TokenSpeed page URL: ${url}`,
+                    message: opened ? `TokenSpeed page opened: ${url}` : `TokenSpeed page URL: ${url}`,
                 },
             });
             await client.tui.showToast({

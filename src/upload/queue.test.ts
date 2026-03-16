@@ -1,12 +1,12 @@
-import { describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
+import { describe, expect, test } from "bun:test";
 import { runMigrations } from "../storage/migrations";
 import type { RequestMetrics } from "../types";
 import {
   enqueueRequestBucket,
+  getPendingUploadBuckets,
   getUploadQueueEntries,
   getUploadQueueStatus,
-  getPendingUploadBuckets,
   markUploadBucketFailed,
   markUploadBucketSent,
 } from "./queue";
@@ -40,10 +40,21 @@ describe("upload queue", () => {
     const db = new Database(":memory:", { strict: true });
     runMigrations(db);
 
-    enqueueRequestBucket(db, sampleMetrics({ id: "req-1", messageID: "msg-1" }), "anon-project", 300);
     enqueueRequestBucket(
       db,
-      sampleMetrics({ id: "req-2", messageID: "msg-2", outputTokens: 10, outputTps: 2, cost: 0.02 }),
+      sampleMetrics({ id: "req-1", messageID: "msg-1" }),
+      "anon-project",
+      300,
+    );
+    enqueueRequestBucket(
+      db,
+      sampleMetrics({
+        id: "req-2",
+        messageID: "msg-2",
+        outputTokens: 10,
+        outputTps: 2,
+        cost: 0.02,
+      }),
       "anon-project",
       300,
     );
